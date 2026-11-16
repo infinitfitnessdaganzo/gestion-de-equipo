@@ -68,3 +68,16 @@ footer{justify-content:flex-end}
 
 .scroll th .sort-header{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;padding:0;white-space:nowrap}
 .sort-header span{color:var(--teal)}
+
+.metric small{display:block;margin-top:5px}
+.compact-packages .scroll{overflow:visible}
+.compact-packages table{white-space:normal}
+.compact-packages :is(th,td){padding:9px 7px;overflow-wrap:anywhere}
+.compact-packages .package-cell-label{display:none}
+@media(max-width:1060px){
+  .compact-packages :is(table,tbody){display:block}
+  .compact-packages thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  .compact-packages tbody tr{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(105px,100%),1fr));gap:8px;padding:12px;border-top:1px solid var(--line)}
+  .compact-packages td{display:block;min-width:0;padding:0;border:0}
+  .compact-packages .package-cell-label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin-bottom:3px}
+}

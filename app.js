@@ -46,7 +46,8 @@ const adjusted = (m, a) => a?.discount != null ? m.minutes * (100 - a.discount) 
 const mode = value => '<span class="badge '+ value.split(' ')[0].toLowerCase() +'">'+ esc(value) +'</span>';
 const activeAt = (m, d) => m.start <= d && (!m.end || m.end >= d);
 const action = (key, kind, id, label) => '<button data-act="'+key+'" data-kind="'+kind+'" data-id="'+esc(id)+'">'+label+'</button>';
-const metric = (label, value) => '<div class="metric">'+label+'<strong>'+value+'</strong></div>';
+const metric = (label, value, detail = '') => '<div class="metric">'+label+'<strong>'+value+'</strong>'+
+  (detail ? '<small>'+detail+'</small>' : '')+'</div>';
 const total = rows => rows.reduce((sum, s) => sum + s.minutes, 0);
 
 function notify(message = '') {
@@ -71,11 +72,13 @@ function compareMembers(a,b) {
   return direction * memberCollator.compare(left,right) || memberCollator.compare(a.name,b.name);
 }
 
-function table(title, columns, rows, empty) {
-  return '<section class="panel"><div class="sectionHead"><h2>'+title+'</h2></div>'+
+function table(title, columns, rows, empty, compact = false) {
+  return '<section class="panel'+(compact ? ' compact-packages' : '')+'"><div class="sectionHead"><h2>'+title+'</h2></div>'+
     (rows.length ? '<div class="scroll"><table><thead><tr>'+columns.map(c =>
       Array.isArray(c) ? memberHeader(...c) : '<th scope="col">'+c+'</th>').join('')+
-      '</tr></thead><tbody>'+rows.map(r => '<tr>'+r.map(c => '<td>'+c+'</td>').join('')+'</tr>').join('')+
+      '</tr></thead><tbody>'+rows.map(r => '<tr>'+r.map((c,i) => (compact && columns[i] ?
+      '<td><span class="package-cell-label" aria-hidden="true">'+columns[i]+'</span><span>'+c+'</span></td>' :
+      '<td>'+c+'</td>')).join('')+'</tr>').join('')+
       '</tbody></table></div>' : '<p class="empty">'+empty+'</p>')+'</section>';
 }
 
@@ -154,6 +157,35 @@ function closingRows(trainer, month) {
   return monthlyRows(start,end,month,m => m.trainer === trainer);
 }
 
+function trainingMetrics(monthly, extras) {
+  const normalized = name => name.trim().replace(/\s+/g,' ').toLocaleLowerCase('es').normalize('NFC');
+  const idsByName = new Map();
+  for (const {m} of monthly) {
+    if (!m.code) continue;
+    const name = normalized(m.name);
+    const ids = idsByName.get(name) || new Set();
+    ids.add(m.code);
+    idsByName.set(name,ids);
+  }
+  const identity = (name,code) => {
+    const normalizedName = normalized(name);
+    const candidates = idsByName.get(normalizedName);
+    const id = code || (candidates?.size === 1 ? [...candidates][0] : null);
+    return id ? 'code:'+id : 'name:'+normalizedName;
+  };
+  const active = monthly.filter(row => row.count > 0);
+  const people = rows => new Set(rows.map(({m}) => identity(m.name,m.code)));
+  const all = people(active);
+  extras.filter(e => e.kind === 'suelto').forEach(e => all.add(identity(e.name)));
+  const group = (label, rows, count) => metric(label,fmt.format(count),
+    hours(rows.reduce((minutes,row) => minutes + row.count*60,0))+' en paquetes');
+  const duo = active.filter(row => row.m.mode === 'Duo');
+  const one = active.filter(row => row.m.mode === 'One');
+  return group('Personas entrenadas',active,all.size)+
+    group('Personas en Duo',duo,people(duo).size)+
+    group('Personas en One',one,people(one).size);
+}
+
 function render() {
   const {start:monthStart,end:monthEnd,month:currentMonth} = monthData();
   const visibleTrainers = state.equipo.filter(t => t.active ||
@@ -201,19 +233,17 @@ function render() {
           (ratesReady ? action('closeMonth','cierres',t.id,'Cerrar mes') : 'Configura las tarifas')];
     });
     const details = monthly.map(({m, adjustment, count, unitRate, pay, closed}) => [
-      esc(nameOf(m.trainer)), esc(m.code || '—'), esc(m.name),mode(packageName(m)),
+      esc(m.code || '—'), esc(m.name),mode(packageName(m)),
       fmt.format(m.minutes / 60),adjustment?.discount != null ? adjustment.discount+' %' :
         (adjustment ? 'Ajuste anterior' : 'Sin descuento'),fmt.format(count),unitRate == null ? '—' : money(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',closed ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Descuento')
     ]);
     $('content').innerHTML = '<div class="metrics">'+
-      metric('Entrenamientos del mes',fmt.format(sum(monthly)+singles))+
-      metric('Entrenamientos Duo',fmt.format(sum(monthly.filter(row => row.m.mode === 'Duo'))))+
-      metric('Entrenamientos One',fmt.format(sum(monthly.filter(row => row.m.mode === 'One'))))+
+      trainingMetrics(monthly,extras)+
       metric('Total para nómina',ratesReady || (closed.length && monthly.every(r => r.pay != null)) ? money(payTotal(monthly)+extraPay) : '—')+
       '</div>'+table('Entrenamientos por entrenador',['Entrenador',...packages,'Sueltos','Total entrenamientos','Total para nómina','Estado',''],totals,
         'No hay entrenadores para esta selección.')+
-      table('Paquetes de los socios',['Entrenador','N.º de socio','Socio','Paquete','Entrenamientos del paquete','Descuento','Entrenamientos del mes','€/entrenamiento','Importe del mes',''],
-        details,'No hay socios asignados para este mes.')+
+      table('Paquetes de los socios',['N.º socio','Socio','Paquete','Horas paquete','Descuento','Horas mes','€/hora','Importe',''],
+        details,'No hay socios asignados para este mes.',true)+
       (!selectedClosure && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
         '<div class="sectionHead">'+action('add','sueltos','','Añadir entrenamiento suelto')+'</div>' : '')+
       extraTable(extras,!!selectedClosure);
