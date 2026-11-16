@@ -76,9 +76,28 @@ const extraKeys = [...rateKeys,'single'];
 const extraLabels = [...packages.map(p => 'Prima '+p),'Entrenamiento suelto'];
 const closedMonth = (trainer,month) => state.cierres?.some(c => c.trainer === trainer && c.month === month);
 
+function bonusDay(start) {
+  const [year,month,dateOfMonth] = start.split('-').map(Number);
+  const target = new Date(0);
+  target.setUTCFullYear(year,month+2,0);
+  target.setUTCDate(Math.min(dateOfMonth,target.getUTCDate()));
+  return target.toISOString().slice(0,10);
+}
+
+function eligibleBonusDay(m) {
+  if (m.bonus == null || !m.start) return null;
+  const due = bonusDay(m.start);
+  return !m.end || due <= m.end ? due : null;
+}
+
 function extrasFor(trainer,month) {
-  const bonuses = state.socios.filter(m => m.trainer === trainer && m.bonus != null && m.start.startsWith(month))
-    .map(m => ({id:m.id,kind:'prima',day:m.start,name:m.name,pay:m.bonus,concept:'Prima '+packageName(m)}));
+  const recorded = new Set((state.cierres || []).flatMap(c => (c.extras || []).filter(e => e.kind === 'prima').map(e => e.id)));
+  const bonuses = state.socios.filter(m => m.trainer === trainer && !recorded.has(m.id))
+    .flatMap(m => {
+      const due = eligibleBonusDay(m);
+      return due?.startsWith(month) ?
+        [{id:m.id,kind:'prima',day:due,name:m.name,pay:m.bonus,concept:'Prima '+packageName(m)}] : [];
+    });
   const singles = (state.sueltos || []).filter(s => s.trainer === trainer && s.day.startsWith(month))
     .map(s => ({...s,kind:'suelto',concept:'Entrenamiento suelto'}));
   return [...bonuses,...singles].sort((a,b) => a.day.localeCompare(b.day));
@@ -300,7 +319,7 @@ function openEditor(kind, id, intent) {
     input('Fecha final (opcional)','end',data.end,'date','')+
     '<label class="wide">Prima de alta<select name="bonus">'+
       option('no','Sin prima',data.bonus == null ? 'no' : 'yes')+
-      option('yes','Incluir prima de alta',data.bonus == null ? 'no' : 'yes')+'</select></label>';
+      option('yes','Incluir prima de alta',data.bonus == null ? 'no' : 'yes')+'</select><small>Se abona al cumplir dos meses si el socio sigue activo.</small></label>';
   if (kind === 'ajustes') {
     const m = member(id);
     const prior = state.ajustes.find(a => a.member === id && a.month === chosenMonth);
@@ -427,8 +446,8 @@ function change(form) {
       const wantsBonus = value('bonus') === 'yes';
       const sameBonus = data.bonus != null && record.trainer === data.trainer && record.start === data.start &&
         packageName(record) === packageName(data);
-      if ((wantsBonus && !sameBonus && closedMonth(record.trainer,record.start.slice(0,7))) ||
-          (data.bonus != null && (!wantsBonus || !sameBonus) && closedMonth(data.trainer,data.start.slice(0,7)))) {
+      const oldDue = eligibleBonusDay(data);
+      if (oldDue && (!wantsBonus || !sameBonus) && closedMonth(data.trainer,oldDue.slice(0,7))) {
         throw new Error('La prima pertenece a un mes cerrado.');
       }
       if (wantsBonus) {
@@ -440,6 +459,10 @@ function change(form) {
     if (!record.trainer) throw new Error('Selecciona un entrenador.');
     if (intent !== 'close' && !/^[0-9]+$/.test(record.code)) throw new Error('Introduce el número de socio.');
     if (record.end && record.end < record.start) throw new Error('La fecha de fin debe ser igual o posterior a la de inicio.');
+    const due = eligibleBonusDay(record);
+    if (due && (due !== eligibleBonusDay(data) || record.trainer !== data.trainer) && closedMonth(record.trainer,due.slice(0,7))) {
+      throw new Error('El mes en que corresponde abonar la prima ya está cerrado.');
+    }
     const linked = (next.sesiones || []).filter(s => s.members.includes(id));
     if (linked.some(s => !activeAt(record,s.day) || s.mode !== record.mode || s.trainer !== record.trainer)) {
       throw new Error('La asignación tiene sesiones registradas. Conserva su modalidad y entrenador y usa fechas que cubran esas sesiones.');
