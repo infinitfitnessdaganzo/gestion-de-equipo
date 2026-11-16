@@ -387,6 +387,18 @@ function change(form) {
 }
 
 $('add').onclick = () => openEditor(page === 'resumen' ? 'socios' : page);
+function shiftMonth(offset) {
+  const [year, month] = ($('month').value || day().slice(0, 7)).split('-').map(Number);
+  const target = new Date(0);
+  target.setUTCFullYear(year, month - 1 + offset, 1);
+  const targetYear = target.getUTCFullYear();
+  if (targetYear < 1) return;
+  $('month').value = String(targetYear).padStart(4, '0') + '-' + String(target.getUTCMonth() + 1).padStart(2, '0');
+  render();
+}
+
+$('prevMonth').onclick = () => shiftMonth(-1);
+$('nextMonth').onclick = () => shiftMonth(1);
 $('month').onchange = $('trainer').onchange = render;
 $('cancel').onclick = $('close').onclick = () => { if (!saving) $('editor').close(); };
 $('editor').addEventListener('cancel', event => { if (saving) event.preventDefault(); });

@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#131b26">
   <title>Entrenadores · Infinit Fitness Daganzo</title>
-  <link rel="stylesheet" href="styles.css">
-  <script type="module" src="app.js?v=20261116-cierres"></script>
+  <link rel="stylesheet" href="styles.css?v=20261116-meses">
+  <script type="module" src="app.js?v=20261116-meses"></script>
 </head>
 <body>
   <aside>
@@ -34,7 +34,14 @@
       <header><div><div class="eyebrow">ENTRENAMIENTO PERSONAL</div><h1 id="title"></h1></div>
         <button class="primary" id="add"></button></header>
       <div class="filters" id="filters">
-        <label>Mes<input type="month" id="month" required></label>
+        <div class="month-picker">
+          <label for="month">Mes</label>
+          <div class="month-control">
+            <button type="button" id="prevMonth" aria-label="Mes anterior">‹</button>
+            <input type="month" id="month" required>
+            <button type="button" id="nextMonth" aria-label="Mes siguiente">›</button>
+          </div>
+        </div>
         <label>Entrenador<select id="trainer"></select></label>
       </div>
       <div id="content"></div>
