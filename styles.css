@@ -62,3 +62,6 @@ footer{justify-content:flex-end}
 #trainerButtons{display:flex;gap:6px;flex-wrap:wrap}
 #trainerButtons button{min-height:42px;color:var(--ink);font-size:15px}
 #trainerButtons button[aria-pressed="true"]{background:var(--teal);border-color:var(--teal);color:white}
+
+.month-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#currentMonth{padding:1px 8px;border-radius:6px;color:var(--teal);font-size:12px}

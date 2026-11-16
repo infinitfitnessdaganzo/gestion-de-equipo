@@ -407,6 +407,10 @@ function shiftMonth(offset) {
 
 $('prevMonth').onclick = () => shiftMonth(-1);
 $('nextMonth').onclick = () => shiftMonth(1);
+$('currentMonth').onclick = () => {
+  $('month').value = day().slice(0, 7);
+  render();
+};
 $('month').onchange = render;
 $('trainerButtons').onclick = event => {
   const choice = event.target.closest('[data-trainer]');
