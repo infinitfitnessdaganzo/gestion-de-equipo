@@ -11,11 +11,11 @@ const emptyState = () => ({
   socios: [], sesiones: [], ausencias: [], ajustes: []
 });
 const titles = {
-  resumen: 'Resumen mensual', socios: 'Socios y paquetes', sesiones: 'Entrenamientos',
+  resumen: 'Resumen mensual', socios: 'Socios y paquetes',
   ausencias: 'Vacaciones y ausencias', equipo: 'Entrenadores'
 };
 const actions = {
-  resumen: 'Registrar entrenamiento', socios: 'Asignar socio', sesiones: 'Registrar entrenamiento',
+  resumen: 'Asignar socio', socios: 'Asignar socio',
   ausencias: 'Registrar ausencia', equipo: 'Añadir entrenador'
 };
 let page = 'resumen';
@@ -34,7 +34,11 @@ const hours = minutes => fmt.format(minutes / 60) + ' h';
 const date = iso => iso ? iso.split('-').reverse().join('/') : '—';
 const nameOf = id => state.equipo.find(t => t.id === id)?.name ?? '—';
 const member = id => state.socios.find(m => m.id === id);
-const mode = value => '<span class="badge '+ value.toLowerCase() +'">'+ esc(value) +'</span>';
+const packages = ['Duo 1H','Duo 2H','One 1H','One 2H'];
+const packageName = m => m.mode + (m.minutes === 480 ? ' 2H' : ' 1H');
+const discounts = ['0','25','50','75','100'];
+const adjusted = (m, a) => a?.discount != null ? m.minutes * (100 - a.discount) / 100 : (a?.minutes ?? m.minutes);
+const mode = value => '<span class="badge '+ value.split(' ')[0].toLowerCase() +'">'+ esc(value) +'</span>';
 const activeAt = (m, d) => m.start <= d && (!m.end || m.end >= d);
 const action = (key, kind, id, label) => '<button data-act="'+key+'" data-kind="'+kind+'" data-id="'+esc(id)+'">'+label+'</button>';
 const metric = (label, value) => '<div class="metric">'+label+'<strong>'+value+'</strong></div>';
@@ -61,7 +65,6 @@ function monthData() {
   const matches = r => !selected || r.trainer === selected;
   return {
     start, end, month, matches,
-    sessions: state.sesiones.filter(s => matches(s) && s.day >= start && s.day <= end),
     absences: state.ausencias.filter(a => matches(a) && a.start <= end && a.end >= start)
   };
 }
@@ -78,51 +81,45 @@ function render() {
     if (b.dataset.page === page) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
   });
-  const { start, end, month, sessions, absences, matches } = monthData();
-  const sort = (a,b) => b.day.localeCompare(a.day);
+  const { start, end, month, absences, matches } = monthData();
   if (page === 'resumen') {
-    const inMonth = state.socios.filter(m => matches(m) && m.start <= end && (!m.end || m.end >= start));
-    const grouped = new Map();
-    const rows = inMonth.sort((a,b) => a.name.localeCompare(b.name,'es')).map(m => {
-      const attended = sessions.filter(s => s.members.includes(m.id));
-      const key = m.code || m.name.toLowerCase();
-      const group = grouped.get(key) || { name:m.name, code:m.code, sessions:new Map() };
-      attended.forEach(s => group.sessions.set(s.id,s));
-      grouped.set(key,group);
+    const assignments = state.socios
+      .filter(m => matches(m) && m.start <= end && (!m.end || m.end >= start))
+      .sort((a,b) => nameOf(a.trainer).localeCompare(nameOf(b.trainer),'es') || a.name.localeCompare(b.name,'es'));
+    const monthly = assignments.map(m => {
       const adjustment = state.ajustes.find(a => a.member === m.id && a.month === month);
-      const planned = adjustment?.minutes ?? m.minutes;
-      const balance = planned - total(attended);
-      return [esc(m.name),esc(nameOf(m.trainer)),mode(m.mode),hours(planned)+(adjustment ? ' · ajuste' : ''),
-        attended.length, hours(total(attended)), balance < 0 ? '+'+hours(-balance)+' extra' : hours(balance),
-        action('adjust','ajustes',m.id,'Ajustar mes')];
+      return {m, adjustment, count:adjusted(m, adjustment) / 60};
     });
-    $('content').innerHTML = '<div class="metrics">'+[
-      metric('Socios con paquete',grouped.size),
-      metric('Sesiones Duo',sessions.filter(s => s.mode === 'Duo').length),
-      metric('Sesiones One',sessions.filter(s => s.mode === 'One').length),
-      metric('Horas impartidas',hours(total(sessions))),
-      metric('Horas de ausencia parcial',hours(total(absences.filter(a => a.type === 'Ausencia parcial'))))
-    ].join('')+'</div>'+table('Total mensual por socio',['Socio','N.º de socio','Sesiones','Horas realizadas'],
-      [...grouped.values()].map(g => [esc(g.name),esc(g.code || '—'),g.sessions.size,hours(total([...g.sessions.values()]))]),
-      'No hay socios asignados para este mes.')+table('Detalle de paquetes',
-      ['Socio','Entrenador','Modalidad','Paquete del mes','Sesiones','Horas realizadas','Saldo pendiente',''],rows,
-      'No hay socios asignados para este mes.');
+    const sum = rows => rows.reduce((total, row) => total + row.count, 0);
+    const trainers = state.equipo.filter(t =>
+      matches({trainer:t.id}) && (t.active || $('trainer').value || monthly.some(row => row.m.trainer === t.id)));
+    const totals = trainers.map(t => {
+      const rows = monthly.filter(row => row.m.trainer === t.id);
+      return [esc(t.name), ...packages.map(p => fmt.format(sum(rows.filter(row => packageName(row.m) === p)))),
+        '<strong>'+fmt.format(sum(rows))+'</strong>'];
+    });
+    const details = monthly.map(({m, adjustment, count}) => [
+      esc(nameOf(m.trainer)), esc(m.code || '—'), esc(m.name),mode(packageName(m)),
+      fmt.format(m.minutes / 60),adjustment?.discount != null ? adjustment.discount+' %' :
+        (adjustment ? 'Ajuste anterior' : 'Sin descuento'),fmt.format(count),action('adjust','ajustes',m.id,'Descuento')
+    ]);
+    $('content').innerHTML = '<div class="metrics">'+
+      metric('Entrenamientos del mes',fmt.format(sum(monthly)))+
+      metric('Entrenamientos Duo',fmt.format(sum(monthly.filter(row => row.m.mode === 'Duo'))))+
+      metric('Entrenamientos One',fmt.format(sum(monthly.filter(row => row.m.mode === 'One'))))+
+      '</div>'+table('Entrenamientos por entrenador',['Entrenador',...packages,'Total'],totals,
+        'No hay entrenadores para esta selección.')+
+      table('Paquetes de los socios',['Entrenador','N.º de socio','Socio','Paquete','Entrenamientos del paquete','Descuento','Entrenamientos del mes',''],
+        details,'No hay socios asignados para este mes.');
   }
   if (page === 'socios') {
     const rows = state.socios.slice().sort((a,b) => a.name.localeCompare(b.name,'es'));
-    const display = m => [esc(m.name),esc(m.code || '—'),esc(nameOf(m.trainer)),mode(m.mode),hours(m.minutes),
+    const display = m => [esc(m.name),esc(m.code || '—'),esc(nameOf(m.trainer)),mode(packageName(m)),fmt.format(m.minutes / 60),
       date(m.start),date(m.end),action('edit','socios',m.id,'Editar')+
       (!m.end ? action('close','socios',m.id,'Finalizar') : '')];
-    const columns = ['Socio','N.º de socio','Entrenador','Modalidad','Paquete','Desde','Hasta',''];
+    const columns = ['Socio','N.º de socio','Entrenador','Paquete','Entrenamientos al mes','Desde','Hasta',''];
     $('content').innerHTML = table('Asignaciones actuales',columns,rows.filter(m => activeAt(m,day())).map(display),'Añade una asignación para empezar.')+
       table('Historial y próximas altas',columns,rows.filter(m => !activeAt(m,day())).map(display),'Todavía no hay asignaciones en esta sección.');
-  }
-  if (page === 'sesiones') {
-    $('content').innerHTML = table('Sesiones realizadas',['Fecha','Entrenador','Modalidad','Socios','Duración','Nota',''],
-      sessions.sort(sort).map(s => [date(s.day),esc(nameOf(s.trainer)),mode(s.mode),
-        s.members.map(id => esc(member(id)?.name || '—')).join(', '),hours(s.minutes),esc(s.note || '—'),
-        action('edit','sesiones',s.id,'Editar')+action('remove','sesiones',s.id,'Eliminar')]),
-      'Todavía no hay entrenamientos registrados en este mes.');
   }
   if (page === 'ausencias') {
     const daysByType = type => {
@@ -164,7 +161,7 @@ function input(label, key, value, type = 'text', attrs = 'required') {
 function select(label, key, values, selected, attrs = 'required') {
   return '<label>'+label+'<select name="'+key+'" '+attrs+'>'+values.map(([id,text]) => option(id,text,selected)).join('')+'</select></label>';
 }
-const modeOptions = [['Duo','Duo'],['One','One']];
+const packageOptions = packages.map(p => [p,p+' · '+(p.endsWith('2H') ? 8 : 4)+' entrenamientos al mes']);
 const absenceOptions = ['Vacaciones','Ausencia completa','Ausencia parcial'].map(v => [v,v]);
 
 function openEditor(kind, id, intent) {
@@ -175,35 +172,31 @@ function openEditor(kind, id, intent) {
   const trainers = state.equipo.filter(r => r.active || r.id === data.trainer).map(r => [r.id,r.name]);
   const trainer = select('Entrenador','trainer',trainers,data.trainer || t);
   editor = {kind,id,intent,data};
-  $('editorTitle').textContent = intent === 'close' ? 'Finalizar asignación' : intent === 'adjust' ? 'Ajustar paquete del mes' :
+  $('editorTitle').textContent = intent === 'close' ? 'Finalizar asignación' : intent === 'adjust' ? 'Descuento del mes' :
     (id ? 'Editar registro' : actions[kind]);
   $('formError').hidden = true;
   let fields = '';
   if (kind === 'equipo') fields = input('Nombre','name',data.name,'text','required maxlength="100"');
   if (kind === 'socios') fields = intent === 'close' ? input('Último día','end',day(),'date') :
-    input('Nombre del socio','name',data.name,'text','required maxlength="120"')+
-    input('N.º de socio (opcional)','code',data.code,'text','maxlength="30"')+
-    trainer+select('Modalidad','mode',modeOptions,data.mode)+
-    select('Horas al mes','minutes',[['240','4 horas'],['480','8 horas']],String(data.minutes || 240))+
+    input('N.º de socio','code',data.code,'text','required maxlength="30" inputmode="numeric" pattern="[0-9]+"')+
+    input('Nombre y apellidos','name',data.name,'text','required maxlength="120"')+
+    trainer+select('Paquete','package',packageOptions,data.mode ? packageName(data) : undefined)+
     input('Fecha de inicio','start',data.start || day(),'date')+
-    input('Último día (opcional)','end',data.end,'date','');
+    input('Fecha final (opcional)','end',data.end,'date','');
   if (kind === 'ajustes') {
     const m = member(id);
     const prior = state.ajustes.find(a => a.member === id && a.month === chosenMonth);
+    const options = discounts.map(v => [v,v === '0' ? 'Sin descuento' : v+' %']);
+    if (prior && prior.discount == null) options.unshift(['legacy','Conservar ajuste anterior']);
     fields = '<p class="wide">'+esc(m.name)+' · '+esc(chosenMonth)+'</p>'+
-      input('Horas de este mes','hours',(prior?.minutes ?? m.minutes)/60,'number','required min="0" max="744" step="any"');
+      select('Descuento sobre el paquete','discount',options,prior?.discount != null ? String(prior.discount) : (prior ? 'legacy' : '0'));
     editor.month = chosenMonth;
   }
-  if (kind === 'sesiones') fields = trainer+select('Modalidad','mode',modeOptions,data.mode)+
-    input('Fecha','day',data.day || defaultDay,'date')+
-    input('Duración (minutos)','minutes',data.minutes || 60,'number','required min="1" max="1440"')+
-    '<div class="wide" id="participants"></div>'+input('Nota (opcional)','note',data.note,'text','maxlength="250"');
   if (kind === 'ausencias') fields = trainer+select('Tipo','type',absenceOptions,data.type)+
     input('Desde','start',data.start || defaultDay,'date')+input('Hasta','end',data.end || defaultDay,'date')+
     input('Duración parcial (minutos)','minutes',data.minutes || 60,'number','required min="1" max="1439"')+
     input('Nota (opcional)','note',data.note,'text','maxlength="250"');
   $('fields').innerHTML = fields;
-  if (kind === 'sesiones') fillParticipants(data.members || []);
   if (kind === 'ausencias') showPartial();
   $('editor').showModal();
 }
@@ -215,15 +208,6 @@ function showPartial() {
   e.minutes.closest('label').hidden = !partial;
   e.end.disabled = partial;
   e.end.closest('label').hidden = partial;
-}
-
-function fillParticipants(chosen) {
-  const e = $('recordForm').elements;
-  const matches = state.socios.filter(m => m.trainer === e.trainer.value && m.mode === e.mode.value && activeAt(m,e.day.value));
-  const opts = matches.map(m => [m.id, m.name + (m.code ? ' · '+m.code : '')]);
-  $('participants').innerHTML = select('Socio','first',[['','Selecciona socio'],...opts],chosen[0])+
-    (e.mode.value === 'Duo' ? select('Segundo socio (opcional)','second',[['','Sin segundo socio'],...opts],chosen[1],'') : '')+
-    (opts.length ? '' : '<p class="empty">No hay socios asignados para esta modalidad, entrenador y fecha.</p>');
 }
 
 async function persist(next) {
@@ -286,13 +270,15 @@ function change(form) {
   }
   if (kind === 'socios') {
     Object.assign(record,intent === 'close' ? {...data,end:value('end')} : {
-      name:value('name'),code:value('code'),trainer,mode:value('mode'),minutes:Number(value('minutes')),
+      name:value('name'),code:value('code'),trainer,mode:value('package').split(' ')[0],
+      minutes:value('package').endsWith('2H') ? 480 : 240,
       start:value('start'),end:value('end')
     });
     if (!record.name) throw new Error('Introduce el nombre del socio.');
     if (!record.trainer) throw new Error('Selecciona un entrenador.');
+    if (intent !== 'close' && !/^[0-9]+$/.test(record.code)) throw new Error('Introduce el número de socio.');
     if (record.end && record.end < record.start) throw new Error('La fecha de fin debe ser igual o posterior a la de inicio.');
-    const linked = next.sesiones.filter(s => s.members.includes(id));
+    const linked = (next.sesiones || []).filter(s => s.members.includes(id));
     if (linked.some(s => !activeAt(record,s.day) || s.mode !== record.mode || s.trainer !== record.trainer)) {
       throw new Error('La asignación tiene sesiones registradas. Conserva su modalidad y entrenador y usa fechas que cubran esas sesiones.');
     }
@@ -300,11 +286,6 @@ function change(form) {
       record.name.toLowerCase() === m.name.toLowerCase()) && (!m.end || m.end >= record.start) &&
       (!record.end || m.start <= record.end));
     if (overlap) throw new Error('Ya existe una asignación de este socio para esas fechas.');
-  }
-  if (kind === 'sesiones') {
-    const members = [value('first'),value('second')].filter(Boolean);
-    if (!members.length || new Set(members).size !== members.length) throw new Error('Selecciona socios distintos.');
-    Object.assign(record,{trainer,note,members,mode:value('mode'),day:value('day'),minutes:Number(value('minutes'))});
   }
   if (kind === 'ausencias') {
     if (!trainer) throw new Error('Selecciona un entrenador.');
@@ -314,9 +295,11 @@ function change(form) {
     if (record.end < start) throw new Error('La fecha final debe ser igual o posterior a la inicial.');
   }
   if (kind === 'ajustes') {
+    const discount = value('discount');
+    if (discount === 'legacy') return next;
+    if (!discounts.includes(discount)) throw new Error('Selecciona un descuento válido.');
     next.ajustes = next.ajustes.filter(a => !(a.member === id && a.month === month));
-    const minutes = Math.round(Number(value('hours'))*60);
-    if (minutes !== member(id).minutes) next.ajustes.push({member:id,month,minutes});
+    if (discount !== '0') next.ajustes.push({member:id,month,discount:Number(discount)});
     return next;
   }
   const index = next[kind].findIndex(r => r.id === id);
@@ -325,13 +308,12 @@ function change(form) {
   return next;
 }
 
-$('add').onclick = () => openEditor(page === 'resumen' ? 'sesiones' : page);
+$('add').onclick = () => openEditor(page === 'resumen' ? 'socios' : page);
 $('month').onchange = $('trainer').onchange = render;
 $('cancel').onclick = $('close').onclick = () => { if (!saving) $('editor').close(); };
 $('editor').addEventListener('cancel', event => { if (saving) event.preventDefault(); });
 $('recordForm').onchange = event => {
   const field = event.target.name;
-  if (editor.kind === 'sesiones' && ['trainer','mode','day'].includes(field)) fillParticipants([]);
   if (editor.kind === 'ausencias' && field === 'type') showPartial();
 };
 $('recordForm').onsubmit = async event => {
