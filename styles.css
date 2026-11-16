@@ -81,3 +81,5 @@ footer{justify-content:flex-end}
   .compact-packages td{display:block;min-width:0;padding:0;border:0}
   .compact-packages .package-cell-label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin-bottom:3px}
 }
+
+#recordForm textarea{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;resize:vertical}

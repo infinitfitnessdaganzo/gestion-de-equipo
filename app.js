@@ -34,6 +34,9 @@ function esc(value = '') {
 const fmt = new Intl.NumberFormat('es-ES', {maximumFractionDigits: 2});
 const euro = new Intl.NumberFormat('es-ES', {style:'currency',currency:'EUR'});
 const money = cents => euro.format(cents / 100);
+const monthNames = new Intl.DateTimeFormat('es-ES',{month:'long',timeZone:'UTC'});
+const monthName = month => monthNames.format(new Date(month+'-01T00:00:00Z'));
+const monthlyNote = (id,month) => state.notasMensuales?.find(n => n.member === id && n.month === month)?.text || '';
 const hours = minutes => fmt.format(minutes / 60) + ' h';
 const date = iso => iso ? iso.split('-').reverse().join('/') : '—';
 const nameOf = id => state.equipo.find(t => t.id === id)?.name ?? '—';
@@ -235,14 +238,17 @@ function render() {
     const details = monthly.map(({m, adjustment, count, unitRate, pay, closed}) => [
       esc(m.code || '—'), esc(m.name),mode(packageName(m)),
       fmt.format(m.minutes / 60),adjustment?.discount != null ? adjustment.discount+' %' :
-        (adjustment ? 'Ajuste anterior' : 'Sin descuento'),fmt.format(count),unitRate == null ? '—' : money(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',closed ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Descuento')
+        (adjustment ? 'Ajuste anterior' : 'Sin descuento'),fmt.format(count),unitRate == null ? '—' : money(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',
+      action('note','notasMensuales',m.id,monthlyNote(m.id,month) ? 'Ver nota' : 'Añadir nota'),
+      closed ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Descuento')
     ]);
     $('content').innerHTML = '<div class="metrics">'+
       trainingMetrics(monthly,extras)+
       metric('Total para nómina',ratesReady || (closed.length && monthly.every(r => r.pay != null)) ? money(payTotal(monthly)+extraPay) : '—')+
       '</div>'+table('Entrenamientos por entrenador',['Entrenador',...packages,'Sueltos','Total entrenamientos','Total para nómina','Estado',''],totals,
         'No hay entrenadores para esta selección.')+
-      table('Paquetes de los socios',['N.º socio','Socio','Paquete','Horas paquete','Descuento','Horas mes','€/hora','Importe',''],
+      table('Socios entrenados en '+monthName(month),
+        ['N.º socio','Socio','Paquete','Horas paquete','Descuento','Horas mes','€/hora','Importe del mes','Nota',''],
         details,'No hay socios asignados para este mes.',true)+
       (!selectedClosure && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
         '<div class="sectionHead">'+action('add','sueltos','','Añadir entrenamiento suelto')+'</div>' : '')+
@@ -370,6 +376,13 @@ function openEditor(kind, id, intent) {
     '<label class="wide">Prima de alta<select name="bonus">'+
       option('no','Sin prima',data.bonus == null ? 'no' : 'yes')+
       option('yes','Incluir prima de alta',data.bonus == null ? 'no' : 'yes')+'</select><small>Se abona al cumplir dos meses si el socio sigue activo.</small></label>';
+  if (kind === 'notasMensuales') {
+    const savedRow = state.cierres?.find(c => c.month === chosenMonth && c.trainer === t)?.rows.find(row => row.m.id === id);
+    const m = savedRow?.m || member(id);
+    $('editorTitle').textContent = 'Nota del mes';
+    fields = '<p class="wide">'+esc(m?.name || '')+' · '+esc(monthName(chosenMonth))+' '+esc(chosenMonth.slice(0,4))+'</p>'+
+      '<label class="wide">Nota<textarea name="note" rows="5" maxlength="2000">'+esc(monthlyNote(id,chosenMonth))+'</textarea></label>';
+  }
   if (kind === 'ajustes') {
     const m = member(id);
     const prior = state.ajustes.find(a => a.member === id && a.month === chosenMonth);
@@ -528,6 +541,11 @@ function change(form) {
     const partial = type === 'Ausencia parcial';
     Object.assign(record,{trainer,note,type,start,end:partial ? start : value('end'),minutes:partial ? Number(value('minutes')) : 0});
     if (record.end < start) throw new Error('La fecha final debe ser igual o posterior a la inicial.');
+  }
+  if (kind === 'notasMensuales') {
+    next.notasMensuales = (next.notasMensuales || []).filter(n => n.member !== id || n.month !== month);
+    if (note) next.notasMensuales.push({member:id,month,text:note});
+    return next;
   }
   if (kind === 'ajustes') {
     if (next.cierres?.some(c => c.month === month && c.trainer === member(id).trainer)) throw new Error('Este mes ya está cerrado.');
