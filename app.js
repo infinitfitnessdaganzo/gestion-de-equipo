@@ -179,8 +179,10 @@ function trainingMetrics(monthly, extras) {
   const people = rows => new Set(rows.map(({m}) => identity(m.name,m.code)));
   const all = people(active);
   extras.filter(e => e.kind === 'suelto').forEach(e => all.add(identity(e.name)));
-  const group = (label, rows, count) => metric(label,fmt.format(count),
-    hours(rows.reduce((minutes,row) => minutes + row.count*60,0))+' en paquetes');
+  const group = (label, rows, count) => {
+    const workedHours = rows.reduce((sum,row) => sum + row.count,0);
+    return metric(label,fmt.format(count),fmt.format(workedHours)+(workedHours === 1 ? ' hora' : ' horas'));
+  };
   const duo = active.filter(row => row.m.mode === 'Duo');
   const one = active.filter(row => row.m.mode === 'One');
   return group('Personas entrenadas',active,all.size)+
