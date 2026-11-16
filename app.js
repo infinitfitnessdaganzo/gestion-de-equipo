@@ -258,7 +258,7 @@ function render() {
     const display = m => [esc(m.name),esc(m.code || '—'),esc(nameOf(m.trainer)),mode(packageName(m)),fmt.format(m.minutes / 60),
       date(m.start),date(m.end),action('edit','socios',m.id,'Editar')+
       (!m.end ? action('close','socios',m.id,'Finalizar') : '')];
-    const columns = [['Socio','name'],['N.º de socio','code'],['Entrenador','trainer'],'Paquete','Entrenamientos al mes','Desde','Hasta',''];
+    const columns = [['Nombre del socio','name'],['N.º de socio','code'],['Entrenador','trainer'],'Paquete','Entrenamientos al mes','Desde','Hasta',''];
     $('content').innerHTML = table('Asignaciones actuales',columns,rows.filter(m => activeAt(m,day())).map(display),'Añade una asignación para empezar.')+
       table('Historial y próximas altas',columns,rows.filter(m => !activeAt(m,day())).map(display),'Todavía no hay asignaciones en esta sección.');
   }
