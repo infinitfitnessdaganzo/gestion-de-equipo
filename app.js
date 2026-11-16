@@ -46,7 +46,12 @@ const member = id => state.socios.find(m => m.id === id);
 const packages = ['Duo 1H','Duo 2H','One 1H','One 2H'];
 const rateKeys = ['duo1','duo2','one1','one2'];
 const packageName = m => m.mode + (m.minutes === 480 ? ' 2H' : ' 1H');
-const discounts = ['0','25','50','75','100'];
+const completionOptions = [['100','100 % · 4 de 4 semanas'],['75','75 % · 3 de 4 semanas'],
+  ['50','50 % · 2 de 4 semanas'],['25','25 % · 1 de 4 semanas'],['0','0 % · Ninguna sesión']];
+function sessionProgress(member,count) {
+  const planned = member.minutes / 60;
+  return fmt.format(count / planned * 100)+' % · '+fmt.format(count)+' de '+fmt.format(planned);
+}
 const adjusted = (m, a) => a?.discount != null ? m.minutes * (100 - a.discount) / 100 : (a?.minutes ?? m.minutes);
 const mode = value => '<span class="badge '+ value.split(' ')[0].toLowerCase() +'">'+ esc(value) +'</span>';
 const activeAt = (m, d) => m.start <= d && (!m.end || m.end >= d);
@@ -263,12 +268,11 @@ function render() {
         closure ? action('report','cierres',t.id,'Ver cierre') :
           (ratesReady ? action('closeMonth','cierres',t.id,'Cerrar mes') : 'Configura las tarifas')];
     });
-    const details = monthly.map(({m, adjustment, count, unitRate, pay, closed}) => [
+    const details = monthly.map(({m, count, unitRate, pay, closed}) => [
       esc(m.code || '—'), esc(m.name),mode(packageName(m)),
-      fmt.format(m.minutes / 60),adjustment?.discount != null ? adjustment.discount+' %' :
-        (adjustment ? 'Ajuste anterior' : 'Sin descuento'),fmt.format(count),unitRate == null ? '—' : money(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',
+      fmt.format(m.minutes / 60),sessionProgress(m,count),fmt.format(count),unitRate == null ? '—' : money(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',
       noteButton(m.id,month),
-      closed ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Descuento')
+      closed ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Ajustar')
     ]);
     $('content').innerHTML = '<div class="metrics">'+
       trainingMetrics(monthly,extras)+
@@ -276,7 +280,7 @@ function render() {
       '</div>'+table('Entrenamientos por entrenador',['Entrenador',...packages,'Sueltos','Total entrenamientos','Total para nómina','Estado',''],totals,
         'No hay entrenadores para esta selección.')+
       table('Socios entrenados en '+monthName(month),
-        ['N.º socio','Socio','Paquete','Horas paquete','Descuento','Horas mes','€/hora','Importe del mes','Nota',''],
+        ['N.º socio','Socio','Paquete','Horas paquete','Sesiones realizadas','Horas mes','€/hora','Importe del mes','Nota',''],
         details,'No hay socios asignados para este mes.',true)+
       (!selectedClosure && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
         '<div class="sectionHead">'+action('add','sueltos','','Añadir entrenamiento suelto')+'</div>' : '')+
@@ -355,7 +359,7 @@ function openEditor(kind, id, intent) {
   const trainers = state.equipo.filter(r => r.active || r.id === data.trainer).map(r => [r.id,r.name]);
   const trainer = select('Entrenador','trainer',trainers,data.trainer || t);
   editor = {kind,id,intent,data,month:chosenMonth};
-  $('editorTitle').textContent = intent === 'rates' ? 'Tarifas mensuales para nómina' : intent === 'close' ? 'Finalizar asignación' : intent === 'adjust' ? 'Descuento del mes' :
+  $('editorTitle').textContent = intent === 'rates' ? 'Tarifas mensuales para nómina' : intent === 'close' ? 'Finalizar asignación' : intent === 'adjust' ? 'Sesiones realizadas en el mes' :
     (id ? 'Editar registro' : actions[kind]);
   $('formError').hidden = true;
   $('save').hidden = intent === 'report';
@@ -381,9 +385,9 @@ function openEditor(kind, id, intent) {
     $('editorTitle').textContent = (closure ? 'Cierre de ' : 'Cerrar mes de ')+(closure?.trainerName || nameOf(id));
     fields = '<div class="wide"><p>'+esc(chosenMonth)+' · <strong>'+
       money(payTotal(rows)+payTotal(extras))+'</strong> para nómina</p>'+
-      table('Desglose',['Socio','Paquete','Descuento','Entrenos','€/entreno','Importe'],
-        rows.map(({m,adjustment,count,unitRate,pay}) => [esc(m.name),packageName(m),
-          adjustment?.discount != null ? adjustment.discount+' %' : (adjustment ? 'Ajuste' : '0 %'),
+      table('Desglose',['Socio','Paquete','Sesiones realizadas','Entrenos','€/entreno','Importe'],
+        rows.map(({m,count,unitRate,pay}) => [esc(m.name),packageName(m),
+          sessionProgress(m,count),
           fmt.format(count),money(unitRate),money(pay)]),'El entrenador no tiene paquetes en este mes.')+
       extraTable(extras,true)+
       (closure ? '' : '<p>El cierre guardará estos importes y el desglose del mes.</p>')+'</div>';
@@ -425,10 +429,10 @@ function openEditor(kind, id, intent) {
   if (kind === 'ajustes') {
     const m = member(id);
     const prior = state.ajustes.find(a => a.member === id && a.month === chosenMonth);
-    const options = discounts.map(v => [v,v === '0' ? 'Sin descuento' : v+' %']);
+    const options = [...completionOptions];
     if (prior && prior.discount == null) options.unshift(['legacy','Conservar ajuste anterior']);
     fields = '<p class="wide">'+esc(m.name)+' · '+esc(chosenMonth)+'</p>'+
-      select('Descuento sobre el paquete','discount',options,prior?.discount != null ? String(prior.discount) : (prior ? 'legacy' : '0'));
+      select('Sesiones realizadas','completion',options,prior?.discount != null ? String(100-prior.discount) : (prior ? 'legacy' : '100'));
     editor.month = chosenMonth;
   }
   if (kind === 'ausencias') fields = trainer+select('Tipo','type',absenceOptions,data.type)+
@@ -626,11 +630,11 @@ function change(form) {
   }
   if (kind === 'ajustes') {
     if (next.cierres?.some(c => c.month === month && c.trainer === member(id).trainer)) throw new Error('Este mes ya está cerrado.');
-    const discount = value('discount');
-    if (discount === 'legacy') return next;
-    if (!discounts.includes(discount)) throw new Error('Selecciona un descuento válido.');
+    const completion = value('completion');
+    if (completion === 'legacy') return next;
+    if (!completionOptions.some(([option]) => option === completion)) throw new Error('Selecciona el porcentaje de sesiones realizadas.');
     next.ajustes = next.ajustes.filter(a => !(a.member === id && a.month === month));
-    if (discount !== '0') next.ajustes.push({member:id,month,discount:Number(discount)});
+    if (completion !== '100') next.ajustes.push({member:id,month,discount:100-Number(completion)});
     return next;
   }
   const index = next[kind].findIndex(r => r.id === id);
