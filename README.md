@@ -1,4 +1,4 @@
-# Control de entrenadores · Infinit Fitness Daganzo
+# Gestión de equipo · Finifinders
 
 Aplicación de gestión en GitHub Pages. Los datos se guardan en el proyecto Supabase
 `Infinit-fitness-daganzo` (`filakxlgdewfurlcqptk`) con el esquema de `supabase.sql`.
