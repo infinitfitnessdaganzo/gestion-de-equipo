@@ -30,11 +30,14 @@ function esc(value = '') {
   return String(value).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 const fmt = new Intl.NumberFormat('es-ES', {maximumFractionDigits: 2});
+const euro = new Intl.NumberFormat('es-ES', {style:'currency',currency:'EUR'});
+const money = cents => euro.format(cents / 100);
 const hours = minutes => fmt.format(minutes / 60) + ' h';
 const date = iso => iso ? iso.split('-').reverse().join('/') : '—';
 const nameOf = id => state.equipo.find(t => t.id === id)?.name ?? '—';
 const member = id => state.socios.find(m => m.id === id);
 const packages = ['Duo 1H','Duo 2H','One 1H','One 2H'];
+const rateKeys = ['duo1','duo2','one1','one2'];
 const packageName = m => m.mode + (m.minutes === 480 ? ' 2H' : ' 1H');
 const discounts = ['0','25','50','75','100'];
 const adjusted = (m, a) => a?.discount != null ? m.minutes * (100 - a.discount) / 100 : (a?.minutes ?? m.minutes);
@@ -86,31 +89,40 @@ function render() {
     const assignments = state.socios
       .filter(m => matches(m) && m.start <= end && (!m.end || m.end >= start))
       .sort((a,b) => nameOf(a.trainer).localeCompare(nameOf(b.trainer),'es') || a.name.localeCompare(b.name,'es'));
+    const monthlyRate = state.tarifas?.filter(r => r.month <= month).sort((a,b) => b.month.localeCompare(a.month))[0]?.rates;
     const monthly = assignments.map(m => {
       const adjustment = state.ajustes.find(a => a.member === m.id && a.month === month);
-      return {m, adjustment, count:adjusted(m, adjustment) / 60};
+      const count = adjusted(m, adjustment) / 60;
+      const unitRate = monthlyRate ? monthlyRate[rateKeys[packages.indexOf(packageName(m))]] / (m.minutes / 60) : null;
+      return {m, adjustment, count, unitRate, pay:unitRate == null ? null : Math.round(count * unitRate)};
     });
     const sum = rows => rows.reduce((total, row) => total + row.count, 0);
+    const sumPay = rows => monthlyRate ? money(rows.reduce((total, row) => total + row.pay, 0)) : '—';
     const trainers = state.equipo.filter(t =>
       matches({trainer:t.id}) && (t.active || $('trainer').value || monthly.some(row => row.m.trainer === t.id)));
     const totals = trainers.map(t => {
       const rows = monthly.filter(row => row.m.trainer === t.id);
       return [esc(t.name), ...packages.map(p => fmt.format(sum(rows.filter(row => packageName(row.m) === p)))),
-        '<strong>'+fmt.format(sum(rows))+'</strong>'];
+        '<strong>'+fmt.format(sum(rows))+'</strong>', '<strong>'+sumPay(rows)+'</strong>'];
     });
-    const details = monthly.map(({m, adjustment, count}) => [
+    const details = monthly.map(({m, adjustment, count, unitRate, pay}) => [
       esc(nameOf(m.trainer)), esc(m.code || '—'), esc(m.name),mode(packageName(m)),
       fmt.format(m.minutes / 60),adjustment?.discount != null ? adjustment.discount+' %' :
-        (adjustment ? 'Ajuste anterior' : 'Sin descuento'),fmt.format(count),action('adjust','ajustes',m.id,'Descuento')
+        (adjustment ? 'Ajuste anterior' : 'Sin descuento'),fmt.format(count),unitRate == null ? '—' : money(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',action('adjust','ajustes',m.id,'Descuento')
     ]);
     $('content').innerHTML = '<div class="metrics">'+
       metric('Entrenamientos del mes',fmt.format(sum(monthly)))+
       metric('Entrenamientos Duo',fmt.format(sum(monthly.filter(row => row.m.mode === 'Duo'))))+
       metric('Entrenamientos One',fmt.format(sum(monthly.filter(row => row.m.mode === 'One'))))+
-      '</div>'+table('Entrenamientos por entrenador',['Entrenador',...packages,'Total'],totals,
+      metric('Total para nómina',sumPay(monthly))+
+      '</div>'+table('Entrenamientos por entrenador',['Entrenador',...packages,'Total entrenamientos','Total para nómina'],totals,
         'No hay entrenadores para esta selección.')+
-      table('Paquetes de los socios',['Entrenador','N.º de socio','Socio','Paquete','Entrenamientos del paquete','Descuento','Entrenamientos del mes',''],
-        details,'No hay socios asignados para este mes.');
+      table('Paquetes de los socios',['Entrenador','N.º de socio','Socio','Paquete','Entrenamientos del paquete','Descuento','Entrenamientos del mes','€/entrenamiento','Importe del mes',''],
+        details,'No hay socios asignados para este mes.')+
+      '<section class="panel"><div class="sectionHead"><div><h2>Tarifas para nómina</h2><p>'+
+      (monthlyRate ? packages.map((p,i) => p+' · '+money(monthlyRate[rateKeys[i]])+'/mes').join(' &nbsp; | &nbsp; ') :
+        'Configura los importes mensuales de cada paquete.')+'</p></div>'+
+      action('rates','tarifas','',monthlyRate ? 'Cambiar tarifas' : 'Configurar tarifas')+'</div></section>';
   }
   if (page === 'socios') {
     const rows = state.socios.slice().sort((a,b) => a.name.localeCompare(b.name,'es'));
@@ -165,17 +177,24 @@ const packageOptions = packages.map(p => [p,p+' · '+(p.endsWith('2H') ? 8 : 4)+
 const absenceOptions = ['Vacaciones','Ausencia completa','Ausencia parcial'].map(v => [v,v]);
 
 function openEditor(kind, id, intent) {
-  const data = state[kind].find(r => r.id === id) || {};
+  const data = state[kind]?.find(r => r.id === id) || {};
   const t = $('trainer').value;
   const chosenMonth = $('month').value || day().slice(0,7);
   const defaultDay = day().startsWith(chosenMonth) ? day() : chosenMonth+'-01';
   const trainers = state.equipo.filter(r => r.active || r.id === data.trainer).map(r => [r.id,r.name]);
   const trainer = select('Entrenador','trainer',trainers,data.trainer || t);
-  editor = {kind,id,intent,data};
-  $('editorTitle').textContent = intent === 'close' ? 'Finalizar asignación' : intent === 'adjust' ? 'Descuento del mes' :
+  editor = {kind,id,intent,data,month:chosenMonth};
+  $('editorTitle').textContent = intent === 'rates' ? 'Tarifas mensuales para nómina' : intent === 'close' ? 'Finalizar asignación' : intent === 'adjust' ? 'Descuento del mes' :
     (id ? 'Editar registro' : actions[kind]);
   $('formError').hidden = true;
   let fields = '';
+  if (kind === 'tarifas') {
+    const current = state.tarifas?.filter(r => r.month <= chosenMonth).sort((a,b) => b.month.localeCompare(a.month))[0];
+    fields = '<p class="wide">Importes por paquete completo. Se aplicarán desde el mes indicado.</p>'+
+      packages.map((p,i) => input(p+' (€)',rateKeys[i],current ? current.rates[rateKeys[i]]/100 : '',
+        'number','required min="0" max="10000" step="0.01"')).join('')+
+      input('Desde el mes','effective',chosenMonth,'month');
+  }
   if (kind === 'equipo') fields = input('Nombre','name',data.name,'text','required maxlength="100"');
   if (kind === 'socios') fields = intent === 'close' ? input('Último día','end',day(),'date') :
     input('N.º de socio','code',data.code,'text','required maxlength="30" inputmode="numeric" pattern="[0-9]+"')+
@@ -264,6 +283,13 @@ function change(form) {
   const trainer = value('trainer');
   const note = value('note');
   let record = {id:id || crypto.randomUUID()};
+  if (kind === 'tarifas') {
+    const effective = value('effective');
+    const rates = Object.fromEntries(rateKeys.map(key => [key,Math.round(Number(value(key))*100)]));
+    next.tarifas = (next.tarifas || []).filter(r => r.month !== effective);
+    next.tarifas.push({month:effective,rates});
+    return next;
+  }
   if (kind === 'equipo') {
     if (!value('name')) throw new Error('Introduce el nombre del entrenador.');
     Object.assign(record,{name:value('name'),active:data.active ?? true});

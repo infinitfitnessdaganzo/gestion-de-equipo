@@ -14,3 +14,8 @@ La cuenta de gestión usa el acceso por correo y contraseña de Supabase Auth.
 - El resumen suma los entrenamientos descontados por socio y muestra los totales por entrenador y paquete.
   Cada socio Duo aporta su propio paquete al recuento.
 - Las vacaciones y ausencias completas usan rangos inclusivos. Las ausencias parciales se indican en minutos.
+
+## Importes para nómina
+
+Configura los importes mensuales por paquete desde el resumen. Cada cambio se aplica desde el mes elegido.
+El descuento mensual reduce el importe por socio. El total para nómina suma esos importes por entrenador.
