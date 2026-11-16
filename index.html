@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#131b26">
+  <title>Entrenadores � Infinit Fitness Daganzo</title>
+  <link rel="stylesheet" href="styles.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <aside>
+    <div class="brand"><span class="mark">IF</span><div>Infinit Fitness<small>DAGANZO</small></div></div>
+    <nav aria-label="Secciones">
+      <button data-page="resumen" aria-current="page">Resumen mensual</button>
+      <button data-page="socios">Socios y paquetes</button>
+      <button data-page="sesiones">Entrenamientos</button>
+      <button data-page="ausencias">Ausencias</button>
+      <button data-page="equipo">Entrenadores</button>
+    </nav>
+    <button id="logout" hidden>Cerrar sesi�n</button>
+  </aside>
+  <main>
+    <div id="notice" role="status" hidden></div>
+    <section id="login" class="panel login" hidden>
+      <h1>Acceso de gesti�n</h1>
+      <p>Identif�cate con tu cuenta de la app en Supabase.</p>
+      <form id="loginForm">
+        <label>Correo<input name="email" type="email" autocomplete="username" required></label>
+        <label>Contrase�a<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary">Entrar</button>
+      </form>
+    </section>
+    <section id="workspace" hidden>
+      <header><div><div class="eyebrow">ENTRENAMIENTO PERSONAL</div><h1 id="title"></h1></div>
+        <button class="primary" id="add"></button></header>
+      <div class="filters" id="filters">
+        <label>Mes<input type="month" id="month" required></label>
+        <label>Entrenador<select id="trainer"></select></label>
+      </div>
+      <div id="content"></div>
+    </section>
+  </main>
+  <dialog id="editor"><form id="recordForm">
+    <header><h2 id="editorTitle"></h2><button type="button" id="close" aria-label="Cerrar">�</button></header>
+    <div class="fields" id="fields"></div>
+    <p id="formError" role="alert" hidden></p>
+    <footer><button type="button" id="cancel">Cancelar</button><button class="primary" id="save">Guardar</button></footer>
+  </form></dialog>
+</body>
+</html>
