@@ -19,3 +19,7 @@ La cuenta de gestión usa el acceso por correo y contraseña de Supabase Auth.
 
 Configura los importes mensuales por paquete desde el resumen. Cada cambio se aplica desde el mes elegido.
 El descuento mensual reduce el importe por socio. El total para nómina suma esos importes por entrenador.
+
+En **Opciones** se administran los entrenadores y las tarifas. Desde el resumen se puede
+cerrar el mes de cada entrenador y consultar el desglose guardado de cada socio.
+Los cierres conservan las tarifas, descuentos e importes usados en el momento del cierre.
