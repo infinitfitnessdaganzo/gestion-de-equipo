@@ -279,13 +279,15 @@ function render() {
       extraTable(extras,!!selectedClosure);
   }
   if (page === 'socios') {
+    const today = day();
+    const archived = m => !!m.end && m.end <= today;
     const rows = state.socios.slice().sort(compareMembers);
     const display = m => [esc(m.name),esc(m.code || '—'),esc(nameOf(m.trainer)),mode(packageName(m)),fmt.format(m.minutes / 60),
       date(m.start),date(m.end),action('edit','socios',m.id,'Editar')+
       (!m.end ? action('close','socios',m.id,'Finalizar') : '')];
     const columns = [['Nombre del socio','name'],['N.º de socio','code'],['Entrenador','trainer'],'Paquete','Entrenamientos al mes','Desde','Hasta',''];
-    $('content').innerHTML = table('Asignaciones actuales',columns,rows.filter(m => activeAt(m,day())).map(display),'Añade una asignación para empezar.')+
-      table('Historial y próximas altas',columns,rows.filter(m => !activeAt(m,day())).map(display),'Todavía no hay asignaciones en esta sección.');
+    $('content').innerHTML = table('Asignaciones',columns,rows.filter(m => !archived(m)).map(display),'Añade una asignación para empezar.')+
+      table('Archivados',columns,rows.filter(archived).map(display),'Todavía no hay entrenamientos archivados.');
   }
   if (page === 'ausencias') {
     const daysByType = type => {
@@ -353,6 +355,7 @@ function openEditor(kind, id, intent) {
     (id ? 'Editar registro' : actions[kind]);
   $('formError').hidden = true;
   $('save').hidden = intent === 'report';
+  $('deleteMember').hidden = kind !== 'socios' || intent !== 'edit' || !data.id;
   $('save').textContent = intent === 'closeMonth' ? 'Confirmar cierre' : 'Guardar';
   $('cancel').textContent = intent === 'report' ? 'Cerrar' : 'Cancelar';
   let fields = '';
@@ -488,6 +491,18 @@ async function start() {
   $('login').hidden = !!user;
   $('logout').hidden = !user;
   if (user) await load();
+}
+
+function withoutMember(id) {
+  const next = structuredClone(state);
+  next.socios = next.socios.filter(m => m.id !== id);
+  for (const key of ['ajustes','ajustesPrimas','notasMensuales']) {
+    if (next[key]) next[key] = next[key].filter(item => item.member !== id);
+  }
+  if (next.sesiones) next.sesiones = next.sesiones.map(s => ({
+    ...s,members:s.members.filter(memberId => memberId !== id)
+  })).filter(s => s.members.length);
+  return next;
 }
 
 function showBonusPay() {
@@ -631,6 +646,22 @@ $('trainerButtons').onclick = event => {
   $('trainer').value = choice.dataset.trainer;
   render();
   Array.from($('trainerButtons').children).find(b => b.dataset.trainer === choice.dataset.trainer)?.focus();
+};
+$('deleteMember').onclick = async () => {
+  if (saving || editor.kind !== 'socios' || editor.intent !== 'edit' || !editor.id) return;
+  const m = member(editor.id);
+  if (!m || !confirm('¿Borrar definitivamente la ficha de '+m.name+'? También se borrarán sus notas y ajustes. Los cierres guardados se conservan.')) return;
+  $('formError').hidden = true;
+  saving = $('save').disabled = $('deleteMember').disabled = true;
+  try {
+    await persist(withoutMember(m.id));
+    $('editor').close();
+  } catch (error) {
+    $('formError').textContent = error.message;
+    $('formError').hidden = false;
+  } finally {
+    saving = $('save').disabled = $('deleteMember').disabled = false;
+  }
 };
 $('cancel').onclick = $('close').onclick = () => { if (!saving) $('editor').close(); };
 $('editor').addEventListener('cancel', event => { if (saving) event.preventDefault(); });
