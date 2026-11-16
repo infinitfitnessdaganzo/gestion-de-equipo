@@ -24,6 +24,8 @@ let revision;
 let user;
 let editor;
 let saving = false;
+const undoHistory = [];
+const redoHistory = [];
 let memberSort = {key:'name', direction:1};
 const memberCollator = new Intl.Collator('es', {sensitivity:'base',numeric:true});
 $('month').value = day().slice(0, 7);
@@ -226,6 +228,8 @@ function render() {
     '<button type="button" data-trainer="'+esc(t.id)+'" aria-pressed="'+(t.id === $('trainer').value)+'">'+esc(t.name)+'</button>'
   ).join('');
   $('workspace').hidden = false;
+  $('backupPanel').hidden = page !== 'equipo';
+  updateHistoryButtons();
   $('title').textContent = titles[page];
   $('add').textContent = '+ ' + actions[page];
   $('add').disabled = page !== 'equipo' && !state.equipo.some(t => t.active);
@@ -446,16 +450,29 @@ function showPartial() {
   e.end.closest('label').hidden = partial;
 }
 
-async function persist(next) {
+function updateHistoryButtons() {
+  $('undoChange').disabled = saving || !undoHistory.length;
+  $('redoChange').disabled = saving || !redoHistory.length;
+  $('exportBackup').disabled = $('importBackup').disabled = saving;
+}
+
+async function persist(next, track = true) {
   if (!db || !user) throw new Error('Hace falta iniciar sesión para guardar.');
   const {data,error} = await db.from('ep_daganzo_estado')
     .update({revision:revision+1,datos:next}).eq('propietario',user.id).eq('revision',revision).select('revision');
   if (error) throw new Error('Supabase no pudo guardar el registro. Inténtalo de nuevo.');
   if (!data.length) {
+    undoHistory.length = redoHistory.length = 0;
+    updateHistoryButtons();
     await load();
-    $('editor').close();
+    if ($('editor').open) $('editor').close();
     notify('Los datos cambiaron en otra sesión. Revisa la versión actual y vuelve a abrir el formulario.');
     throw new Error('Los datos cambiaron en otra sesión. Revisa la versión actual y vuelve a abrir el formulario.');
+  }
+  if (track) {
+    redoHistory.length = 0;
+    if (JSON.stringify(next.cierres || []) !== JSON.stringify(state.cierres || [])) undoHistory.length = 0;
+    else if (JSON.stringify(next) !== JSON.stringify(state)) undoHistory.push(state);
   }
   state = next;
   revision = data[0].revision;
@@ -622,6 +639,93 @@ function change(form) {
   return next;
 }
 
+async function useHistory(source,destination) {
+  if (saving || !source.length) return;
+  const previous = state;
+  saving = true;
+  updateHistoryButtons();
+  try {
+    await persist(source.at(-1),false);
+    source.pop();
+    destination.push(previous);
+    notify();
+  } catch (error) {
+    notify(error.message);
+  } finally {
+    saving = false;
+    updateHistoryButtons();
+  }
+}
+
+const backupFormat = 'gestion-de-equipo';
+
+function readBackup(raw) {
+  const backup = JSON.parse(raw);
+  const data = backup?.datos;
+  const object = value => value && typeof value === 'object' && !Array.isArray(value);
+  const string = value => typeof value === 'string';
+  const iso = value => string(value) && /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const month = value => string(value) && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+  const amount = value => Number.isFinite(value) && value >= 0;
+  const optional = (value,check) => value == null || check(value);
+  const array = (key,check,required = false) => (!required && data[key] === undefined) ||
+    (Array.isArray(data[key]) && data[key].every(row => object(row) && check(row)));
+  const memberRow = m => string(m.id) && string(m.name) && string(m.trainer) &&
+    (m.mode === 'Duo' || m.mode === 'One') && [240,480].includes(m.minutes);
+  const rates = value => object(value) && rateKeys.every(key => amount(value[key]));
+  const extraRow = e => object(e) && string(e.id) && iso(e.day) && string(e.name) &&
+    string(e.concept) && amount(e.pay) && ['prima','suelto'].includes(e.kind);
+  if (backup?.format !== backupFormat || backup.version !== 1 || !object(data) ||
+      !array('equipo',t => string(t.id) && string(t.name) && typeof t.active === 'boolean',true) ||
+      !array('socios',m => memberRow(m) && iso(m.start) && (!m.end || iso(m.end)),true) ||
+      !array('ausencias',a => string(a.id) && string(a.trainer) && iso(a.start) && iso(a.end) && amount(a.minutes),true) ||
+      !array('ajustes',a => string(a.member) && month(a.month),true) ||
+      !array('sesiones',s => Array.isArray(s.members) && s.members.every(string)) ||
+      !array('tarifas',t => month(t.month) && rates(t.rates)) ||
+      !optional(data.tarifasExtra,v => rates(v) && amount(v.single)) ||
+      !array('sueltos',s => string(s.id) && string(s.trainer) && iso(s.day) && string(s.name) && amount(s.pay)) ||
+      !array('notasMensuales',n => string(n.member) && month(n.month) && string(n.text)) ||
+      !array('ajustesPrimas',a => string(a.member) && string(a.trainer) && month(a.month) && optional(a.pay,amount)) ||
+      !array('cierres',c => string(c.trainer) && month(c.month) && Array.isArray(c.rows) &&
+        c.rows.every(r => object(r) && object(r.m) && memberRow(r.m) && amount(r.count) && amount(r.pay)) &&
+        optional(c.extras,rows => Array.isArray(rows) && rows.every(extraRow)))) {
+    throw new Error('El archivo no es una copia válida de Gestión de equipo.');
+  }
+  return data;
+}
+
+$('undoChange').onclick = () => useHistory(undoHistory,redoHistory);
+$('redoChange').onclick = () => useHistory(redoHistory,undoHistory);
+$('exportBackup').onclick = () => {
+  if (!state || saving) return;
+  const file = new Blob([JSON.stringify({format:backupFormat,version:1,datos:state},null,2)],{type:'application/json'});
+  const url = URL.createObjectURL(file);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = 'gestion-de-equipo-'+day()+'.json';
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url),1000);
+};
+$('importBackup').onclick = () => $('backupFile').click();
+$('backupFile').onchange = async event => {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file || saving) return;
+  saving = true;
+  updateHistoryButtons();
+  try {
+    const next = readBackup(await file.text());
+    if (!confirm('¿Restaurar esta copia con '+next.socios.length+' fichas y '+(next.cierres?.length || 0)+
+      ' cierres? Se sustituirán todos los datos actuales por los del archivo.')) return;
+    await persist(next);
+    notify('Copia restaurada.');
+  } catch (error) {
+    notify(error instanceof SyntaxError ? 'El archivo JSON no se puede leer.' : error.message);
+  } finally {
+    saving = false;
+    updateHistoryButtons();
+  }
+};
 $('add').onclick = () => openEditor(page === 'resumen' ? 'socios' : page);
 function shiftMonth(offset) {
   const [year, month] = ($('month').value || day().slice(0, 7)).split('-').map(Number);
@@ -661,6 +765,7 @@ $('deleteMember').onclick = async () => {
     $('formError').hidden = false;
   } finally {
     saving = $('save').disabled = $('deleteMember').disabled = false;
+    updateHistoryButtons();
   }
 };
 $('cancel').onclick = $('close').onclick = () => { if (!saving) $('editor').close(); };
@@ -681,7 +786,7 @@ $('recordForm').onsubmit = async event => {
   } catch (error) {
     $('formError').textContent = error.message;
     $('formError').hidden = false;
-  } finally { saving = $('save').disabled = false; }
+  } finally { saving = $('save').disabled = false; updateHistoryButtons(); }
 };
 
 document.querySelector('nav').onclick = event => {
@@ -721,7 +826,7 @@ $('content').onclick = async event => {
   }
   saving = true;
   try { await persist(next); notify(); } catch (error) { notify(error.message); }
-  finally { saving = false; }
+  finally { saving = false; updateHistoryButtons(); }
 };
 
 $('loginForm').onsubmit = async event => {

@@ -85,3 +85,5 @@ footer{justify-content:flex-end}
 #recordForm textarea{width:100%;font:inherit;padding:10px;border:1px solid var(--line);border-radius:8px;resize:vertical}
 
 #recordForm .danger-button{margin-inline-end:auto;color:#a32424;border-color:#efc3c3}
+
+.header-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}

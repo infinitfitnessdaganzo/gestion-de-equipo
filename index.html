@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#131b26">
   <title>Gestión de equipo · Infinit Fitness Daganzo</title>
-  <link rel="stylesheet" href="styles.css?v=20261116-archivados">
-  <script type="module" src="app.js?v=20261116-archivados"></script>
+  <link rel="stylesheet" href="styles.css?v=20261116-copias">
+  <script type="module" src="app.js?v=20261116-copias"></script>
 </head>
 <body>
   <aside>
@@ -32,7 +32,11 @@
     </section>
     <section id="workspace" hidden>
       <header><div><div class="eyebrow">ENTRENAMIENTO PERSONAL</div><h1 id="title"></h1></div>
-        <button class="primary" id="add"></button></header>
+        <div class="header-actions">
+          <button type="button" id="undoChange" disabled>Deshacer</button>
+          <button type="button" id="redoChange" disabled>Rehacer</button>
+          <button class="primary" id="add"></button>
+        </div></header>
       <div class="filters" id="filters">
         <div class="month-picker">
           <div class="month-heading">
@@ -52,6 +56,16 @@
         </div>
       </div>
       <div id="content"></div>
+      <section id="backupPanel" class="panel" hidden>
+        <div class="sectionHead">
+          <div><h2>Copias de seguridad</h2><p>Descarga una copia de los datos o restaura un archivo JSON.</p></div>
+          <div class="header-actions">
+            <button type="button" id="exportBackup">Exportar copia</button>
+            <button type="button" id="importBackup">Importar copia</button>
+            <input id="backupFile" type="file" accept=".json,application/json" hidden>
+          </div>
+        </div>
+      </section>
     </section>
   </main>
   <dialog id="editor"><form id="recordForm">
