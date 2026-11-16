@@ -72,6 +72,27 @@ function monthData() {
   };
 }
 
+const extraKeys = [...rateKeys,'single'];
+const extraLabels = [...packages.map(p => 'Prima '+p),'Entrenamiento suelto'];
+const closedMonth = (trainer,month) => state.cierres?.some(c => c.trainer === trainer && c.month === month);
+
+function extrasFor(trainer,month) {
+  const bonuses = state.socios.filter(m => m.trainer === trainer && m.bonus != null && m.start.startsWith(month))
+    .map(m => ({id:m.id,kind:'prima',day:m.start,name:m.name,pay:m.bonus,concept:'Prima '+packageName(m)}));
+  const singles = (state.sueltos || []).filter(s => s.trainer === trainer && s.day.startsWith(month))
+    .map(s => ({...s,kind:'suelto',concept:'Entrenamiento suelto'}));
+  return [...bonuses,...singles].sort((a,b) => a.day.localeCompare(b.day));
+}
+
+const payTotal = rows => rows.reduce((total,row) => total + (row.pay ?? 0),0);
+
+function extraTable(extras,locked) {
+  return table('Primas y entrenamientos sueltos',['Fecha','Socio','Concepto','Importe',''],
+    extras.map(e => [date(e.day),esc(e.name),esc(e.concept),money(e.pay),
+      !locked && e.kind === 'suelto' ? action('edit','sueltos',e.id,'Editar')+action('remove','sueltos',e.id,'Eliminar') : '']),
+    'Sin primas ni entrenamientos sueltos en este mes.');
+}
+
 function ratesFor(month) {
   return state.tarifas?.filter(r => r.month <= month).sort((a,b) => b.month.localeCompare(a.month))[0]?.rates;
 }
@@ -99,6 +120,7 @@ function render() {
   const visibleTrainers = state.equipo.filter(t => t.active ||
     state.socios.some(m => m.trainer === t.id && m.start <= monthEnd && (!m.end || m.end >= monthStart)) ||
     state.ausencias.some(a => a.trainer === t.id && a.start <= monthEnd && a.end >= monthStart) ||
+    (state.sueltos || []).some(s => s.trainer === t.id && s.day.startsWith(currentMonth)) ||
     state.cierres?.some(c => c.trainer === t.id && c.month === currentMonth));
   const selected = $('trainer').value;
   $('trainer').value = visibleTrainers.some(t => t.id === selected) ? selected : (visibleTrainers[0]?.id || '');
@@ -123,7 +145,10 @@ function render() {
       .concat(closed.flatMap(c => c.rows.map(row => ({...row,closed:true}))));
     const sum = rows => rows.reduce((total, row) => total + row.count, 0);
     const ratesReady = !!ratesFor(month);
-    const sumPay = rows => money(rows.reduce((total, row) => total + (row.pay ?? 0), 0));
+    const selectedClosure = closed[0];
+    const extras = selectedClosure ? (selectedClosure.extras || []) : extrasFor($('trainer').value,month);
+    const extraPay = payTotal(extras);
+    const singles = extras.filter(e => e.kind === 'suelto').length;
     const trainers = state.equipo.filter(t =>
       matches({trainer:t.id}) && (t.active || $('trainer').value || monthly.some(row => row.m.trainer === t.id) || closed.some(c => c.trainer === t.id)));
     const totals = trainers.map(t => {
@@ -131,7 +156,7 @@ function render() {
       const closure = closed.find(c => c.trainer === t.id);
       return [esc(closure?.trainerName || t.name),
         ...packages.map(p => fmt.format(sum(rows.filter(row => packageName(row.m) === p)))),
-        '<strong>'+fmt.format(sum(rows))+'</strong>', '<strong>'+(closure || ratesReady ? sumPay(rows) : '—')+'</strong>',
+        fmt.format(singles),'<strong>'+fmt.format(sum(rows)+singles)+'</strong>', '<strong>'+(closure || ratesReady ? money(payTotal(rows)+extraPay) : '—')+'</strong>',
         closure ? 'Cerrado' : 'Abierto',
         closure ? action('report','cierres',t.id,'Ver cierre') :
           (ratesReady ? action('closeMonth','cierres',t.id,'Cerrar mes') : 'Configura las tarifas')];
@@ -142,14 +167,17 @@ function render() {
         (adjustment ? 'Ajuste anterior' : 'Sin descuento'),fmt.format(count),unitRate == null ? '—' : money(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',closed ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Descuento')
     ]);
     $('content').innerHTML = '<div class="metrics">'+
-      metric('Entrenamientos del mes',fmt.format(sum(monthly)))+
+      metric('Entrenamientos del mes',fmt.format(sum(monthly)+singles))+
       metric('Entrenamientos Duo',fmt.format(sum(monthly.filter(row => row.m.mode === 'Duo'))))+
       metric('Entrenamientos One',fmt.format(sum(monthly.filter(row => row.m.mode === 'One'))))+
-      metric('Total para nómina',ratesReady || (closed.length && monthly.every(r => r.pay != null)) ? sumPay(monthly) : '—')+
-      '</div>'+table('Entrenamientos por entrenador',['Entrenador',...packages,'Total entrenamientos','Total para nómina','Estado',''],totals,
+      metric('Total para nómina',ratesReady || (closed.length && monthly.every(r => r.pay != null)) ? money(payTotal(monthly)+extraPay) : '—')+
+      '</div>'+table('Entrenamientos por entrenador',['Entrenador',...packages,'Sueltos','Total entrenamientos','Total para nómina','Estado',''],totals,
         'No hay entrenadores para esta selección.')+
       table('Paquetes de los socios',['Entrenador','N.º de socio','Socio','Paquete','Entrenamientos del paquete','Descuento','Entrenamientos del mes','€/entrenamiento','Importe del mes',''],
-        details,'No hay socios asignados para este mes.');
+        details,'No hay socios asignados para este mes.')+
+      (!selectedClosure && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
+        '<div class="sectionHead">'+action('add','sueltos','','Añadir entrenamiento suelto')+'</div>' : '')+
+      extraTable(extras,!!selectedClosure);
   }
   if (page === 'socios') {
     const rows = state.socios.slice().sort((a,b) => a.name.localeCompare(b.name,'es'));
@@ -194,7 +222,11 @@ function render() {
       action('rates','tarifas','',rates ? 'Cambiar tarifas' : 'Configurar tarifas')+'</div>'+
       (rates ? '<div class="scroll"><table><thead><tr><th>Paquete</th><th>Mes completo</th><th>Por entrenamiento</th></tr></thead><tbody>'+
         packages.map((p,i) => '<tr><td>'+p+'</td><td>'+money(rates[rateKeys[i]])+'</td><td>'+
-          money(rates[rateKeys[i]]/(p.endsWith('2H') ? 8 : 4))+'</td></tr>').join('')+'</tbody></table></div>' : '')+'</section>';
+          money(rates[rateKeys[i]]/(p.endsWith('2H') ? 8 : 4))+'</td></tr>').join('')+'</tbody></table></div>' : '')+'</section>'+
+      '<section class="panel"><div class="sectionHead"><div><h2>Primas y entrenamientos sueltos</h2><p>'+
+      (state.tarifasExtra ? extraLabels.map((label,i) => label+' · '+money(state.tarifasExtra[extraKeys[i]])).join(' &nbsp; | &nbsp; ') :
+        'Configura los importes para las primas y los entrenamientos sueltos.')+'</p></div>'+
+      action('rates','tarifasExtra','',state.tarifasExtra ? 'Cambiar importes' : 'Configurar importes')+'</div></section>';
   }
 }
 
@@ -211,7 +243,7 @@ const packageOptions = packages.map(p => [p,p+' · '+(p.endsWith('2H') ? 8 : 4)+
 const absenceOptions = ['Vacaciones','Ausencia completa','Ausencia parcial'].map(v => [v,v]);
 
 function openEditor(kind, id, intent) {
-  const data = state[kind]?.find(r => r.id === id) || {};
+  const data = state[kind]?.find?.(r => r.id === id) || {};
   const t = $('trainer').value;
   const chosenMonth = $('month').value || day().slice(0,7);
   const defaultDay = day().startsWith(chosenMonth) ? day() : chosenMonth+'-01';
@@ -228,14 +260,29 @@ function openEditor(kind, id, intent) {
   if (kind === 'cierres') {
     const closure = state.cierres?.find(c => c.trainer === id && c.month === chosenMonth);
     const rows = closure?.rows ?? closingRows(id,chosenMonth);
+    const extras = closure ? (closure.extras || []) : extrasFor(id,chosenMonth);
     $('editorTitle').textContent = (closure ? 'Cierre de ' : 'Cerrar mes de ')+(closure?.trainerName || nameOf(id));
     fields = '<div class="wide"><p>'+esc(chosenMonth)+' · <strong>'+
-      money(rows.reduce((sum,r) => sum + r.pay,0))+'</strong> para nómina</p>'+
+      money(payTotal(rows)+payTotal(extras))+'</strong> para nómina</p>'+
       table('Desglose',['Socio','Paquete','Descuento','Entrenos','€/entreno','Importe'],
         rows.map(({m,adjustment,count,unitRate,pay}) => [esc(m.name),packageName(m),
           adjustment?.discount != null ? adjustment.discount+' %' : (adjustment ? 'Ajuste' : '0 %'),
-          fmt.format(count),money(unitRate),money(pay)]),'Este entrenador suma 0 € en el mes.')+
+          fmt.format(count),money(unitRate),money(pay)]),'El entrenador no tiene paquetes en este mes.')+
+      extraTable(extras,true)+
       (closure ? '' : '<p>El cierre guardará estos importes y el desglose del mes.</p>')+'</div>';
+  }
+  if (kind === 'tarifasExtra') {
+    $('editorTitle').textContent = 'Importes de primas y entrenamientos sueltos';
+    fields = extraLabels.map((label,i) => input(label+' (€)',extraKeys[i],
+      state.tarifasExtra ? state.tarifasExtra[extraKeys[i]]/100 : '', 'number',
+      'required min="0" max="10000" step="0.01"')).join('');
+  }
+  if (kind === 'sueltos') {
+    $('editorTitle').textContent = id ? 'Editar entrenamiento suelto' : 'Añadir entrenamiento suelto';
+    fields = trainer+input('Fecha','day',data.day || defaultDay,'date')+
+      input('Nombre del socio','name',data.name,'text','required maxlength="120"')+
+      '<p class="wide">'+(data.pay != null || state.tarifasExtra ? 'Importe para nómina: '+money(data.pay ?? state.tarifasExtra.single) :
+        'Configura el importe en Opciones antes de guardar.')+'</p>';
   }
   if (kind === 'tarifas') {
     const current = ratesFor(chosenMonth);
@@ -250,7 +297,10 @@ function openEditor(kind, id, intent) {
     input('Nombre y apellidos','name',data.name,'text','required maxlength="120"')+
     trainer+select('Paquete','package',packageOptions,data.mode ? packageName(data) : undefined)+
     input('Fecha de inicio','start',data.start || day(),'date')+
-    input('Fecha final (opcional)','end',data.end,'date','');
+    input('Fecha final (opcional)','end',data.end,'date','')+
+    '<label class="wide">Prima de alta<select name="bonus">'+
+      option('no','Sin prima',data.bonus == null ? 'no' : 'yes')+
+      option('yes','Incluir prima de alta',data.bonus == null ? 'no' : 'yes')+'</select></label>';
   if (kind === 'ajustes') {
     const m = member(id);
     const prior = state.ajustes.find(a => a.member === id && a.month === chosenMonth);
@@ -339,8 +389,22 @@ function change(form) {
       m:{id:m.id,name:m.name,code:m.code,trainer:m.trainer,mode:m.mode,minutes:m.minutes},
       adjustment,count,unitRate,pay
     }));
-    next.cierres = [...(next.cierres || []),{month,trainer:id,trainerName:nameOf(id),rows}];
+    next.cierres = [...(next.cierres || []),{month,trainer:id,trainerName:nameOf(id),rows,extras:extrasFor(id,month)}];
     return next;
+  }
+  if (kind === 'tarifasExtra') {
+    next.tarifasExtra = Object.fromEntries(extraKeys.map(key => [key,Math.round(Number(value(key))*100)]));
+    return next;
+  }
+  if (kind === 'sueltos') {
+    if (!trainer || !value('name') || !value('day')) throw new Error('Completa entrenador, socio y fecha.');
+    if (closedMonth(trainer,value('day').slice(0,7)) || (data.id && closedMonth(data.trainer,data.day.slice(0,7)))) {
+      throw new Error('El mes de este entrenador ya está cerrado.');
+    }
+    const pay = data.pay ?? state.tarifasExtra?.single;
+    if (pay == null) throw new Error('Configura el importe del entrenamiento suelto en Opciones.');
+    Object.assign(record,{trainer,name:value('name'),day:value('day'),pay});
+    next.sueltos ??= [];
   }
   if (kind === 'tarifas') {
     const effective = value('effective');
@@ -359,6 +423,19 @@ function change(form) {
       minutes:value('package').endsWith('2H') ? 480 : 240,
       start:value('start'),end:value('end')
     });
+    if (intent !== 'close') {
+      const wantsBonus = value('bonus') === 'yes';
+      const sameBonus = data.bonus != null && record.trainer === data.trainer && record.start === data.start &&
+        packageName(record) === packageName(data);
+      if ((wantsBonus && !sameBonus && closedMonth(record.trainer,record.start.slice(0,7))) ||
+          (data.bonus != null && (!wantsBonus || !sameBonus) && closedMonth(data.trainer,data.start.slice(0,7)))) {
+        throw new Error('La prima pertenece a un mes cerrado.');
+      }
+      if (wantsBonus) {
+        record.bonus = sameBonus ? data.bonus : state.tarifasExtra?.[rateKeys[packages.indexOf(packageName(record))]];
+        if (record.bonus == null) throw new Error('Configura los importes de las primas en Opciones.');
+      }
+    }
     if (!record.name) throw new Error('Introduce el nombre del socio.');
     if (!record.trainer) throw new Error('Selecciona un entrenador.');
     if (intent !== 'close' && !/^[0-9]+$/.test(record.code)) throw new Error('Introduce el número de socio.');
@@ -451,6 +528,10 @@ $('content').onclick = async event => {
   if (act !== 'archive' && act !== 'remove') return openEditor(kind,id,act);
   const next = structuredClone(state);
   if (act === 'remove') {
+    if (kind === 'sueltos') {
+      const entry = state.sueltos?.find(s => s.id === id);
+      if (!entry || closedMonth(entry.trainer,entry.day.slice(0,7))) return notify('El mes ya está cerrado.');
+    }
     if (!confirm('¿Eliminar este registro?')) return;
     next[kind] = next[kind].filter(r => r.id !== id);
   } else {
