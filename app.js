@@ -7,7 +7,7 @@ const db = supabaseKey && createClient('https://filakxlgdewfurlcqptk.supabase.co
 const $ = id => document.getElementById(id);
 const day = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Madrid' }).format(new Date());
 const emptyState = () => ({
-  equipo: [{id: 'cesar', name: 'C�sar', active: true}, {id: 'salma', name: 'Salma', active: true}],
+  equipo: [{id: 'cesar', name: 'César', active: true}, {id: 'salma', name: 'Salma', active: true}],
   socios: [], sesiones: [], ausencias: [], ajustes: []
 });
 const titles = {
@@ -16,7 +16,7 @@ const titles = {
 };
 const actions = {
   resumen: 'Registrar entrenamiento', socios: 'Asignar socio', sesiones: 'Registrar entrenamiento',
-  ausencias: 'Registrar ausencia', equipo: 'A�adir entrenador'
+  ausencias: 'Registrar ausencia', equipo: 'Añadir entrenador'
 };
 let page = 'resumen';
 let state;
@@ -31,8 +31,8 @@ function esc(value = '') {
 }
 const fmt = new Intl.NumberFormat('es-ES', {maximumFractionDigits: 2});
 const hours = minutes => fmt.format(minutes / 60) + ' h';
-const date = iso => iso ? iso.split('-').reverse().join('/') : '-';
-const nameOf = id => state.equipo.find(t => t.id === id)?.name ?? '-';
+const date = iso => iso ? iso.split('-').reverse().join('/') : '—';
+const nameOf = id => state.equipo.find(t => t.id === id)?.name ?? '—';
 const member = id => state.socios.find(m => m.id === id);
 const mode = value => '<span class="badge '+ value.toLowerCase() +'">'+ esc(value) +'</span>';
 const activeAt = (m, d) => m.start <= d && (!m.end || m.end >= d);
@@ -92,7 +92,7 @@ function render() {
       const adjustment = state.ajustes.find(a => a.member === m.id && a.month === month);
       const planned = adjustment?.minutes ?? m.minutes;
       const balance = planned - total(attended);
-      return [esc(m.name),esc(nameOf(m.trainer)),mode(m.mode),hours(planned)+(adjustment ? ' � ajuste' : ''),
+      return [esc(m.name),esc(nameOf(m.trainer)),mode(m.mode),hours(planned)+(adjustment ? ' · ajuste' : ''),
         attended.length, hours(total(attended)), balance < 0 ? '+'+hours(-balance)+' extra' : hours(balance),
         action('adjust','ajustes',m.id,'Ajustar mes')];
     });
@@ -102,27 +102,27 @@ function render() {
       metric('Sesiones One',sessions.filter(s => s.mode === 'One').length),
       metric('Horas impartidas',hours(total(sessions))),
       metric('Horas de ausencia parcial',hours(total(absences.filter(a => a.type === 'Ausencia parcial'))))
-    ].join('')+'</div>'+table('Total mensual por socio',['Socio','N.� de socio','Sesiones','Horas realizadas'],
-      [...grouped.values()].map(g => [esc(g.name),esc(g.code || '-'),g.sessions.size,hours(total([...g.sessions.values()]))]),
+    ].join('')+'</div>'+table('Total mensual por socio',['Socio','N.º de socio','Sesiones','Horas realizadas'],
+      [...grouped.values()].map(g => [esc(g.name),esc(g.code || '—'),g.sessions.size,hours(total([...g.sessions.values()]))]),
       'No hay socios asignados para este mes.')+table('Detalle de paquetes',
       ['Socio','Entrenador','Modalidad','Paquete del mes','Sesiones','Horas realizadas','Saldo pendiente',''],rows,
       'No hay socios asignados para este mes.');
   }
   if (page === 'socios') {
     const rows = state.socios.slice().sort((a,b) => a.name.localeCompare(b.name,'es'));
-    const display = m => [esc(m.name),esc(m.code || '-'),esc(nameOf(m.trainer)),mode(m.mode),hours(m.minutes),
+    const display = m => [esc(m.name),esc(m.code || '—'),esc(nameOf(m.trainer)),mode(m.mode),hours(m.minutes),
       date(m.start),date(m.end),action('edit','socios',m.id,'Editar')+
       (!m.end ? action('close','socios',m.id,'Finalizar') : '')];
-    const columns = ['Socio','N.� de socio','Entrenador','Modalidad','Paquete','Desde','Hasta',''];
-    $('content').innerHTML = table('Asignaciones actuales',columns,rows.filter(m => activeAt(m,day())).map(display),'A�ade una asignaci�n para empezar.')+
-      table('Historial y pr�ximas altas',columns,rows.filter(m => !activeAt(m,day())).map(display),'Todav�a no hay asignaciones en esta secci�n.');
+    const columns = ['Socio','N.º de socio','Entrenador','Modalidad','Paquete','Desde','Hasta',''];
+    $('content').innerHTML = table('Asignaciones actuales',columns,rows.filter(m => activeAt(m,day())).map(display),'Añade una asignación para empezar.')+
+      table('Historial y próximas altas',columns,rows.filter(m => !activeAt(m,day())).map(display),'Todavía no hay asignaciones en esta sección.');
   }
   if (page === 'sesiones') {
-    $('content').innerHTML = table('Sesiones realizadas',['Fecha','Entrenador','Modalidad','Socios','Duraci�n','Nota',''],
+    $('content').innerHTML = table('Sesiones realizadas',['Fecha','Entrenador','Modalidad','Socios','Duración','Nota',''],
       sessions.sort(sort).map(s => [date(s.day),esc(nameOf(s.trainer)),mode(s.mode),
-        s.members.map(id => esc(member(id)?.name || '-')).join(', '),hours(s.minutes),esc(s.note || '-'),
+        s.members.map(id => esc(member(id)?.name || '—')).join(', '),hours(s.minutes),esc(s.note || '—'),
         action('edit','sesiones',s.id,'Editar')+action('remove','sesiones',s.id,'Eliminar')]),
-      'Todav�a no hay entrenamientos registrados en este mes.');
+      'Todavía no hay entrenamientos registrados en este mes.');
   }
   if (page === 'ausencias') {
     const daysByType = type => {
@@ -138,20 +138,20 @@ function render() {
       return keys.size;
     };
     $('content').innerHTML = '<div class="metrics">'+
-      metric('D�as naturales de vacaciones',daysByType('Vacaciones'))+
-      metric('D�as de ausencia completa',daysByType('Ausencia completa'))+
+      metric('Días naturales de vacaciones',daysByType('Vacaciones'))+
+      metric('Días de ausencia completa',daysByType('Ausencia completa'))+
       metric('Horas de ausencia parcial',hours(total(absences.filter(a => a.type === 'Ausencia parcial'))))+'</div>'+
-      table('Registro del mes',['Entrenador','Tipo','Desde','Hasta','Duraci�n parcial','Nota',''],
+      table('Registro del mes',['Entrenador','Tipo','Desde','Hasta','Duración parcial','Nota',''],
         absences.sort((a,b) => b.start.localeCompare(a.start)).map(a => [esc(nameOf(a.trainer)),esc(a.type),date(a.start),date(a.end),
-          a.minutes ? hours(a.minutes) : '-',esc(a.note || '-'),
+          a.minutes ? hours(a.minutes) : '—',esc(a.note || '—'),
           action('edit','ausencias',a.id,'Editar')+action('remove','ausencias',a.id,'Eliminar')]),
-        'Todav�a no hay vacaciones ni ausencias registradas en este mes.');
+        'Todavía no hay vacaciones ni ausencias registradas en este mes.');
   }
   if (page === 'equipo') {
     $('content').innerHTML = table('Equipo',['Entrenador','Estado','Socios actuales',''],state.equipo.map(t => [
       esc(t.name),t.active ? 'Activo' : 'Archivado',state.socios.filter(m => m.trainer === t.id && activeAt(m,day())).length,
       action('edit','equipo',t.id,'Editar')+action('archive','equipo',t.id,t.active ? 'Archivar' : 'Reactivar')
-    ]),'A�ade un entrenador para empezar.');
+    ]),'Añade un entrenador para empezar.');
   }
 }
 
@@ -175,32 +175,32 @@ function openEditor(kind, id, intent) {
   const trainers = state.equipo.filter(r => r.active || r.id === data.trainer).map(r => [r.id,r.name]);
   const trainer = select('Entrenador','trainer',trainers,data.trainer || t);
   editor = {kind,id,intent,data};
-  $('editorTitle').textContent = intent === 'close' ? 'Finalizar asignaci�n' : intent === 'adjust' ? 'Ajustar paquete del mes' :
+  $('editorTitle').textContent = intent === 'close' ? 'Finalizar asignación' : intent === 'adjust' ? 'Ajustar paquete del mes' :
     (id ? 'Editar registro' : actions[kind]);
   $('formError').hidden = true;
   let fields = '';
   if (kind === 'equipo') fields = input('Nombre','name',data.name,'text','required maxlength="100"');
-  if (kind === 'socios') fields = intent === 'close' ? input('�ltimo d�a','end',day(),'date') :
+  if (kind === 'socios') fields = intent === 'close' ? input('Último día','end',day(),'date') :
     input('Nombre del socio','name',data.name,'text','required maxlength="120"')+
-    input('N.� de socio (opcional)','code',data.code,'text','maxlength="30"')+
+    input('N.º de socio (opcional)','code',data.code,'text','maxlength="30"')+
     trainer+select('Modalidad','mode',modeOptions,data.mode)+
     select('Horas al mes','minutes',[['240','4 horas'],['480','8 horas']],String(data.minutes || 240))+
     input('Fecha de inicio','start',data.start || day(),'date')+
-    input('�ltimo d�a (opcional)','end',data.end,'date','');
+    input('Último día (opcional)','end',data.end,'date','');
   if (kind === 'ajustes') {
     const m = member(id);
     const prior = state.ajustes.find(a => a.member === id && a.month === chosenMonth);
-    fields = '<p class="wide">'+esc(m.name)+' � '+esc(chosenMonth)+'</p>'+
+    fields = '<p class="wide">'+esc(m.name)+' · '+esc(chosenMonth)+'</p>'+
       input('Horas de este mes','hours',(prior?.minutes ?? m.minutes)/60,'number','required min="0" max="744" step="any"');
     editor.month = chosenMonth;
   }
   if (kind === 'sesiones') fields = trainer+select('Modalidad','mode',modeOptions,data.mode)+
     input('Fecha','day',data.day || defaultDay,'date')+
-    input('Duraci�n (minutos)','minutes',data.minutes || 60,'number','required min="1" max="1440"')+
+    input('Duración (minutos)','minutes',data.minutes || 60,'number','required min="1" max="1440"')+
     '<div class="wide" id="participants"></div>'+input('Nota (opcional)','note',data.note,'text','maxlength="250"');
   if (kind === 'ausencias') fields = trainer+select('Tipo','type',absenceOptions,data.type)+
     input('Desde','start',data.start || defaultDay,'date')+input('Hasta','end',data.end || defaultDay,'date')+
-    input('Duraci�n parcial (minutos)','minutes',data.minutes || 60,'number','required min="1" max="1439"')+
+    input('Duración parcial (minutos)','minutes',data.minutes || 60,'number','required min="1" max="1439"')+
     input('Nota (opcional)','note',data.note,'text','maxlength="250"');
   $('fields').innerHTML = fields;
   if (kind === 'sesiones') fillParticipants(data.members || []);
@@ -220,22 +220,22 @@ function showPartial() {
 function fillParticipants(chosen) {
   const e = $('recordForm').elements;
   const matches = state.socios.filter(m => m.trainer === e.trainer.value && m.mode === e.mode.value && activeAt(m,e.day.value));
-  const opts = matches.map(m => [m.id, m.name + (m.code ? ' � '+m.code : '')]);
+  const opts = matches.map(m => [m.id, m.name + (m.code ? ' · '+m.code : '')]);
   $('participants').innerHTML = select('Socio','first',[['','Selecciona socio'],...opts],chosen[0])+
     (e.mode.value === 'Duo' ? select('Segundo socio (opcional)','second',[['','Sin segundo socio'],...opts],chosen[1],'') : '')+
     (opts.length ? '' : '<p class="empty">No hay socios asignados para esta modalidad, entrenador y fecha.</p>');
 }
 
 async function persist(next) {
-  if (!db || !user) throw new Error('Hace falta iniciar sesi�n para guardar.');
+  if (!db || !user) throw new Error('Hace falta iniciar sesión para guardar.');
   const {data,error} = await db.from('ep_daganzo_estado')
     .update({revision:revision+1,datos:next}).eq('propietario',user.id).eq('revision',revision).select('revision');
-  if (error) throw new Error('Supabase no pudo guardar el registro. Int�ntalo de nuevo.');
+  if (error) throw new Error('Supabase no pudo guardar el registro. Inténtalo de nuevo.');
   if (!data.length) {
     await load();
     $('editor').close();
-    notify('Los datos cambiaron en otra sesi�n. Revisa la versi�n actual y vuelve a abrir el formulario.');
-    throw new Error('Los datos cambiaron en otra sesi�n. Revisa la versi�n actual y vuelve a abrir el formulario.');
+    notify('Los datos cambiaron en otra sesión. Revisa la versión actual y vuelve a abrir el formulario.');
+    throw new Error('Los datos cambiaron en otra sesión. Revisa la versión actual y vuelve a abrir el formulario.');
   }
   state = next;
   revision = data[0].revision;
@@ -263,7 +263,7 @@ async function load() {
 
 async function start() {
   if (!db) {
-    notify('Falta configurar la clave p�blica del proyecto Supabase.');
+    notify('Falta configurar la clave pública del proyecto Supabase.');
     return;
   }
   const {data} = await db.auth.getSession();
@@ -294,12 +294,12 @@ function change(form) {
     if (record.end && record.end < record.start) throw new Error('La fecha de fin debe ser igual o posterior a la de inicio.');
     const linked = next.sesiones.filter(s => s.members.includes(id));
     if (linked.some(s => !activeAt(record,s.day) || s.mode !== record.mode || s.trainer !== record.trainer)) {
-      throw new Error('La asignaci�n tiene sesiones registradas. Conserva su modalidad y entrenador y usa fechas que cubran esas sesiones.');
+      throw new Error('La asignación tiene sesiones registradas. Conserva su modalidad y entrenador y usa fechas que cubran esas sesiones.');
     }
     const overlap = next.socios.some(m => m.id !== id && (record.code && m.code ? record.code === m.code :
       record.name.toLowerCase() === m.name.toLowerCase()) && (!m.end || m.end >= record.start) &&
       (!record.end || m.start <= record.end));
-    if (overlap) throw new Error('Ya existe una asignaci�n de este socio para esas fechas.');
+    if (overlap) throw new Error('Ya existe una asignación de este socio para esas fechas.');
   }
   if (kind === 'sesiones') {
     const members = [value('first'),value('second')].filter(Boolean);
@@ -360,7 +360,7 @@ $('content').onclick = async event => {
   if (act !== 'archive' && act !== 'remove') return openEditor(kind,id,act);
   const next = structuredClone(state);
   if (act === 'remove') {
-    if (!confirm('�Eliminar este registro?')) return;
+    if (!confirm('¿Eliminar este registro?')) return;
     next[kind] = next[kind].filter(r => r.id !== id);
   } else {
     const trainer = next.equipo.find(r => r.id === id);
@@ -384,7 +384,7 @@ $('loginForm').onsubmit = async event => {
     const {error} = await db.auth.signInWithPassword({
       email:fields.get('email').trim(), password:fields.get('password')
     });
-    if (error) throw new Error('No se pudo iniciar sesi�n. Comprueba el correo y la contrase�a.');
+    if (error) throw new Error('No se pudo iniciar sesión. Comprueba el correo y la contraseña.');
     form.reset();
     notify();
     await start();
@@ -393,7 +393,7 @@ $('loginForm').onsubmit = async event => {
 };
 $('logout').onclick = async () => {
   const {error} = await db.auth.signOut({scope:'local'});
-  if (error) return notify('No se pudo cerrar sesi�n. Int�ntalo de nuevo.');
+  if (error) return notify('No se pudo cerrar sesión. Inténtalo de nuevo.');
   location.reload();
 };
 start().catch(error => notify(error.message));
