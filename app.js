@@ -121,14 +121,20 @@ function bonusAmount(m) {
   return m.bonus ?? state.tarifasExtra?.[rateKeys[packages.indexOf(packageName(m))]];
 }
 
+const bonusOverride = (id,trainer,month) =>
+  state.ajustesPrimas?.find(a => a.member === id && a.trainer === trainer && a.month === month);
+
 function extrasFor(trainer,month) {
   const recorded = new Set((state.cierres || []).flatMap(c => (c.extras || []).filter(e => e.kind === 'prima').map(e => e.id)));
   const bonuses = state.socios.filter(m => m.trainer === trainer && !recorded.has(m.id))
     .flatMap(m => {
       const due = eligibleBonusDay(m);
-      const pay = bonusAmount(m);
-      return due?.startsWith(month) && pay != null ?
-        [{id:m.id,kind:'prima',day:due,name:m.name,pay,concept:'Prima '+packageName(m)}] : [];
+      if (!due?.startsWith(month)) return [];
+      const override = bonusOverride(m.id,trainer,month);
+      const pay = override?.pay ?? bonusAmount(m);
+      return pay == null ? [] :
+        [{id:m.id,kind:'prima',day:due,name:m.name,pay,concept:'Prima '+packageName(m),
+          status:override?.status,note:override?.note}];
     });
   const singles = (state.sueltos || []).filter(s => s.trainer === trainer && s.day.startsWith(month))
     .map(s => ({...s,kind:'suelto',concept:'Entrenamiento suelto'}));
@@ -139,8 +145,11 @@ const payTotal = rows => rows.reduce((total,row) => total + (row.pay ?? 0),0);
 
 function extraTable(extras,locked) {
   return table('Primas y entrenamientos sueltos',['Fecha','Socio','Concepto','Importe',''],
-    extras.map(e => [date(e.day),esc(e.name),esc(e.concept),money(e.pay),
-      !locked && e.kind === 'suelto' ? action('edit','sueltos',e.id,'Editar')+action('remove','sueltos',e.id,'Eliminar') : '']),
+    extras.map(e => [date(e.day),esc(e.name),
+      esc(e.concept)+(e.status === 'void' ? ' · Anulada' : e.status === 'custom' ? ' · Ajustada' : '')+
+        (e.note ? '<br><small>'+esc(e.note)+'</small>' : ''),money(e.pay),
+      locked ? '' : e.kind === 'suelto' ? action('edit','sueltos',e.id,'Editar')+action('remove','sueltos',e.id,'Eliminar') :
+        action('edit','ajustesPrimas',e.id,'Editar prima')]),
     'Sin primas ni entrenamientos sueltos en este mes.');
 }
 
@@ -347,6 +356,17 @@ function openEditor(kind, id, intent) {
   $('save').textContent = intent === 'closeMonth' ? 'Confirmar cierre' : 'Guardar';
   $('cancel').textContent = intent === 'report' ? 'Cerrar' : 'Cancelar';
   let fields = '';
+  if (kind === 'ajustesPrimas') {
+    const m = member(id);
+    const existing = bonusOverride(id,t,chosenMonth);
+    editor.trainer = t;
+    $('editorTitle').textContent = 'Editar prima de alta';
+    fields = '<p class="wide">'+esc(m.name)+' · '+esc(monthName(chosenMonth))+' '+esc(chosenMonth.slice(0,4))+
+      '<br>Importe automático: '+money(bonusAmount(m))+'</p>'+
+      select('Prima','bonusStatus',[['auto','Importe automático'],['custom','Cambiar importe'],['void','Anular prima']],existing?.status || 'auto')+
+      input('Importe (€)','bonusPay',(existing?.pay ?? bonusAmount(m))/100,'number','required min="0" max="10000" step="0.01"')+
+      input('Motivo (opcional)','note',existing?.note,'text','maxlength="250"');
+  }
   if (kind === 'cierres') {
     const closure = state.cierres?.find(c => c.trainer === id && c.month === chosenMonth);
     const rows = closure?.rows ?? closingRows(id,chosenMonth);
@@ -410,6 +430,7 @@ function openEditor(kind, id, intent) {
     input('Nota (opcional)','note',data.note,'text','maxlength="250"');
   $('fields').innerHTML = fields;
   if (kind === 'ausencias') showPartial();
+  if (kind === 'ajustesPrimas') showBonusPay();
   $('editor').showModal();
 }
 
@@ -469,6 +490,13 @@ async function start() {
   if (user) await load();
 }
 
+function showBonusPay() {
+  const fields = $('recordForm').elements;
+  const custom = fields.bonusStatus.value === 'custom';
+  fields.bonusPay.disabled = !custom;
+  fields.bonusPay.closest('label').hidden = !custom;
+}
+
 function change(form) {
   const {kind,id,intent,data,month} = editor;
   const next = structuredClone(state);
@@ -476,10 +504,27 @@ function change(form) {
   const trainer = value('trainer');
   const note = value('note');
   let record = {id:id || crypto.randomUUID()};
+  if (kind === 'ajustesPrimas') {
+    const target = editor.trainer;
+    if (closedMonth(target,month)) throw new Error('Este mes ya está cerrado.');
+    if (!extrasFor(target,month).some(e => e.kind === 'prima' && e.id === id)) {
+      throw new Error('La prima ya no está disponible para este mes.');
+    }
+    const status = value('bonusStatus');
+    const amount = Number(value('bonusPay'));
+    if (!['auto','custom','void'].includes(status) || (status === 'custom' &&
+        (!value('bonusPay') || !Number.isFinite(amount) || amount < 0 || amount > 10000))) {
+      throw new Error('Introduce un importe válido.');
+    }
+    next.ajustesPrimas = (next.ajustesPrimas || []).filter(a => a.member !== id || a.trainer !== target || a.month !== month);
+    if (status !== 'auto' || note) next.ajustesPrimas.push({member:id,trainer:target,month,status,note,
+      pay:status === 'auto' ? null : status === 'void' ? 0 : Math.round(amount*100)});
+    return next;
+  }
   if (kind === 'cierres') {
     if (intent !== 'closeMonth' || !ratesFor(month)) throw new Error('Configura las tarifas del mes antes de cerrarlo.');
     if (next.cierres?.some(c => c.month === month && c.trainer === id)) throw new Error('Este mes ya está cerrado.');
-    if (state.socios.some(m => m.trainer === id && eligibleBonusDay(m)?.startsWith(month) && bonusAmount(m) == null)) {
+    if (state.socios.some(m => m.trainer === id && eligibleBonusDay(m)?.startsWith(month) && (bonusOverride(m.id,id,month)?.pay ?? bonusAmount(m)) == null)) {
       throw new Error('Configura los importes de las primas en Opciones antes de cerrar el mes.');
     }
     const rows = closingRows(id,month).map(({m,adjustment,count,unitRate,pay}) => ({
@@ -592,6 +637,7 @@ $('editor').addEventListener('cancel', event => { if (saving) event.preventDefau
 $('recordForm').onchange = event => {
   const field = event.target.name;
   if (editor.kind === 'ausencias' && field === 'type') showPartial();
+  if (editor.kind === 'ajustesPrimas' && field === 'bonusStatus') showBonusPay();
 };
 $('recordForm').onsubmit = async event => {
   event.preventDefault();
