@@ -65,7 +65,7 @@ function monthData() {
   const [year, number] = month.split('-').map(Number);
   const end = month + '-' + new Date(Date.UTC(year, number, 0)).getUTCDate();
   const selected = $('trainer').value;
-  const matches = r => !selected || r.trainer === selected;
+  const matches = r => r.trainer === selected;
   return {
     start, end, month, matches,
     absences: state.ausencias.filter(a => matches(a) && a.start <= end && a.end >= start)
@@ -95,14 +95,22 @@ function closingRows(trainer, month) {
 }
 
 function render() {
+  const {start:monthStart,end:monthEnd,month:currentMonth} = monthData();
+  const visibleTrainers = state.equipo.filter(t => t.active ||
+    state.socios.some(m => m.trainer === t.id && m.start <= monthEnd && (!m.end || m.end >= monthStart)) ||
+    state.ausencias.some(a => a.trainer === t.id && a.start <= monthEnd && a.end >= monthStart) ||
+    state.cierres?.some(c => c.trainer === t.id && c.month === currentMonth));
   const selected = $('trainer').value;
-  $('trainer').innerHTML = '<option value="">Todos</option>'+state.equipo.map(t => option(t.id,t.name,selected)).join('');
+  $('trainer').value = visibleTrainers.some(t => t.id === selected) ? selected : (visibleTrainers[0]?.id || '');
+  $('trainerButtons').innerHTML = visibleTrainers.map(t =>
+    '<button type="button" data-trainer="'+esc(t.id)+'" aria-pressed="'+(t.id === $('trainer').value)+'">'+esc(t.name)+'</button>'
+  ).join('');
   $('workspace').hidden = false;
   $('title').textContent = titles[page];
   $('add').textContent = '+ ' + actions[page];
   $('add').disabled = page !== 'equipo' && !state.equipo.some(t => t.active);
   $('filters').hidden = page === 'socios';
-  $('trainer').closest('label').hidden = page === 'equipo';
+  $('trainerPicker').hidden = page === 'equipo';
   document.querySelectorAll('[data-page]').forEach(b => {
     if (b.dataset.page === page) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
@@ -399,7 +407,14 @@ function shiftMonth(offset) {
 
 $('prevMonth').onclick = () => shiftMonth(-1);
 $('nextMonth').onclick = () => shiftMonth(1);
-$('month').onchange = $('trainer').onchange = render;
+$('month').onchange = render;
+$('trainerButtons').onclick = event => {
+  const choice = event.target.closest('[data-trainer]');
+  if (!choice || choice.dataset.trainer === $('trainer').value) return;
+  $('trainer').value = choice.dataset.trainer;
+  render();
+  Array.from($('trainerButtons').children).find(b => b.dataset.trainer === choice.dataset.trainer)?.focus();
+};
 $('cancel').onclick = $('close').onclick = () => { if (!saving) $('editor').close(); };
 $('editor').addEventListener('cancel', event => { if (saving) event.preventDefault(); });
 $('recordForm').onchange = event => {

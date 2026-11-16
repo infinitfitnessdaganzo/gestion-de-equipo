@@ -57,3 +57,8 @@ footer{justify-content:flex-end}
 .month-control{display:flex;align-items:center;min-height:42px;border:1px solid var(--line);border-radius:8px;background:#fff}
 .month-control button{flex:0 0 35px;align-self:stretch;border:0;padding:0;border-radius:7px;font-size:23px;line-height:1;color:var(--teal)}
 .month-control input{width:clamp(128px,20vw,168px);min-height:40px;border:0;padding-inline:5px;border-radius:0}
+
+.trainer-picker{display:grid;gap:6px;color:var(--muted);font-size:13px;font-weight:700}
+#trainerButtons{display:flex;gap:6px;flex-wrap:wrap}
+#trainerButtons button{min-height:42px;color:var(--ink);font-size:15px}
+#trainerButtons button[aria-pressed="true"]{background:var(--teal);border-color:var(--teal);color:white}
