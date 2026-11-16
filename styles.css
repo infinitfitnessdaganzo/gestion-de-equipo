@@ -65,3 +65,6 @@ footer{justify-content:flex-end}
 
 .month-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
 #currentMonth{padding:1px 8px;border-radius:6px;color:var(--teal);font-size:12px}
+
+.scroll th .sort-header{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;padding:0;white-space:nowrap}
+.sort-header span{color:var(--teal)}

@@ -11,7 +11,7 @@ const emptyState = () => ({
   socios: [], sesiones: [], ausencias: [], ajustes: []
 });
 const titles = {
-  resumen: 'Resumen mensual', socios: 'Socios y paquetes',
+  resumen: 'Resumen mensual', socios: 'Socios',
   ausencias: 'Vacaciones y ausencias', equipo: 'Opciones'
 };
 const actions = {
@@ -24,6 +24,8 @@ let revision;
 let user;
 let editor;
 let saving = false;
+let memberSort = {key:'name', direction:1};
+const memberCollator = new Intl.Collator('es', {sensitivity:'base',numeric:true});
 $('month').value = day().slice(0, 7);
 
 function esc(value = '') {
@@ -52,9 +54,27 @@ function notify(message = '') {
   $('notice').hidden = !message;
 }
 
+function memberHeader(label,key) {
+  const active = memberSort.key === key;
+  const order = active ? (memberSort.direction === 1 ? 'ascending' : 'descending') : '';
+  const arrow = active ? (memberSort.direction === 1 ? '↑' : '↓') : '↕';
+  return '<th scope="col"'+(active ? ' aria-sort="'+order+'"' : '')+'>'+
+    '<button type="button" class="sort-header" data-sort="'+key+'">'+label+
+    ' <span aria-hidden="true">'+arrow+'</span></button></th>';
+}
+
+function compareMembers(a,b) {
+  const {key,direction} = memberSort;
+  const value = m => key === 'trainer' ? nameOf(m.trainer) : (m[key] || '');
+  const left = value(a), right = value(b);
+  if (key === 'code' && (!left || !right) && left !== right) return left ? -1 : 1;
+  return direction * memberCollator.compare(left,right) || memberCollator.compare(a.name,b.name);
+}
+
 function table(title, columns, rows, empty) {
   return '<section class="panel"><div class="sectionHead"><h2>'+title+'</h2></div>'+
-    (rows.length ? '<div class="scroll"><table><thead><tr>'+columns.map(c => '<th scope="col">'+c+'</th>').join('')+
+    (rows.length ? '<div class="scroll"><table><thead><tr>'+columns.map(c =>
+      Array.isArray(c) ? memberHeader(...c) : '<th scope="col">'+c+'</th>').join('')+
       '</tr></thead><tbody>'+rows.map(r => '<tr>'+r.map(c => '<td>'+c+'</td>').join('')+'</tr>').join('')+
       '</tbody></table></div>' : '<p class="empty">'+empty+'</p>')+'</section>';
 }
@@ -199,11 +219,11 @@ function render() {
       extraTable(extras,!!selectedClosure);
   }
   if (page === 'socios') {
-    const rows = state.socios.slice().sort((a,b) => a.name.localeCompare(b.name,'es'));
+    const rows = state.socios.slice().sort(compareMembers);
     const display = m => [esc(m.name),esc(m.code || '—'),esc(nameOf(m.trainer)),mode(packageName(m)),fmt.format(m.minutes / 60),
       date(m.start),date(m.end),action('edit','socios',m.id,'Editar')+
       (!m.end ? action('close','socios',m.id,'Finalizar') : '')];
-    const columns = ['Socio','N.º de socio','Entrenador','Paquete','Entrenamientos al mes','Desde','Hasta',''];
+    const columns = [['Socio','name'],['N.º de socio','code'],['Entrenador','trainer'],'Paquete','Entrenamientos al mes','Desde','Hasta',''];
     $('content').innerHTML = table('Asignaciones actuales',columns,rows.filter(m => activeAt(m,day())).map(display),'Añade una asignación para empezar.')+
       table('Historial y próximas altas',columns,rows.filter(m => !activeAt(m,day())).map(display),'Todavía no hay asignaciones en esta sección.');
   }
@@ -545,6 +565,16 @@ document.querySelector('nav').onclick = event => {
   render();
 };
 $('content').onclick = async event => {
+  const sort = event.target.closest('[data-sort]');
+  if (sort && page === 'socios') {
+    const {sort:key} = sort.dataset;
+    const headers = [...$('content').querySelectorAll('[data-sort="'+key+'"]')];
+    const focusedIndex = headers.indexOf(sort);
+    memberSort = {key, direction:memberSort.key === key ? -memberSort.direction : 1};
+    render();
+    $('content').querySelectorAll('[data-sort="'+key+'"]')[focusedIndex]?.focus();
+    return;
+  }
   const button = event.target.closest('[data-act]');
   if (!button || saving) return;
   const {act,kind,id} = button.dataset;
