@@ -188,6 +188,13 @@ function trainingMetrics(monthly, extras) {
     group('Personas en One',one,people(one).size);
 }
 
+function noteButton(id,month) {
+  const label = monthlyNote(id,month) ? 'Ver nota' : 'Añadir nota';
+  const icon = label === 'Ver nota' ? '📓' : '🗒';
+  return '<button type="button" data-act="note" data-kind="notasMensuales" data-id="'+esc(id)+
+    '" aria-label="'+label+'" title="'+label+'"><span aria-hidden="true">'+icon+'</span></button>';
+}
+
 function render() {
   const {start:monthStart,end:monthEnd,month:currentMonth} = monthData();
   const visibleTrainers = state.equipo.filter(t => t.active ||
@@ -238,7 +245,7 @@ function render() {
       esc(m.code || '—'), esc(m.name),mode(packageName(m)),
       fmt.format(m.minutes / 60),adjustment?.discount != null ? adjustment.discount+' %' :
         (adjustment ? 'Ajuste anterior' : 'Sin descuento'),fmt.format(count),unitRate == null ? '—' : money(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',
-      action('note','notasMensuales',m.id,monthlyNote(m.id,month) ? 'Ver nota' : 'Añadir nota'),
+      noteButton(m.id,month),
       closed ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Descuento')
     ]);
     $('content').innerHTML = '<div class="metrics">'+
