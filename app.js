@@ -103,10 +103,9 @@ const extraLabels = [...packages.map(p => 'Prima '+p),'Entrenamiento suelto'];
 const closedMonth = (trainer,month) => state.cierres?.some(c => c.trainer === trainer && c.month === month);
 
 function bonusDay(start) {
-  const [year,month,dateOfMonth] = start.split('-').map(Number);
+  const [year,month] = start.split('-').map(Number);
   const target = new Date(0);
-  target.setUTCFullYear(year,month+2,0);
-  target.setUTCDate(Math.min(dateOfMonth,target.getUTCDate()));
+  target.setUTCFullYear(year,month+1,1);
   return target.toISOString().slice(0,10);
 }
 
@@ -375,7 +374,7 @@ function openEditor(kind, id, intent) {
     input('Fecha final (opcional)','end',data.end,'date','')+
     '<label class="wide">Prima de alta<select name="bonus">'+
       option('no','Sin prima',data.bonus == null ? 'no' : 'yes')+
-      option('yes','Incluir prima de alta',data.bonus == null ? 'no' : 'yes')+'</select><small>Se abona al cumplir dos meses si el socio sigue activo.</small></label>';
+      option('yes','Incluir prima de alta',data.bonus == null ? 'no' : 'yes')+'</select><small>Se abona en el tercer mes si el socio sigue activo al empezarlo.</small></label>';
   if (kind === 'notasMensuales') {
     const savedRow = state.cierres?.find(c => c.month === chosenMonth && c.trainer === t)?.rows.find(row => row.m.id === id);
     const m = savedRow?.m || member(id);
