@@ -239,6 +239,24 @@ function correctionSources(trainer,month,editingId,includeUnavailable = false) {
     });
 }
 
+function reportTotals(rows,extras,hasAmount) {
+  const training = payTotal(rows);
+  const bonuses = payTotal(extras.filter(e => e.kind === 'prima'));
+  const singles = payTotal(extras.filter(e => e.kind === 'suelto'));
+  const corrections = payTotal(extras.filter(e => e.kind === 'correccion'));
+  const withoutBonuses = training+singles+corrections;
+  const amount = value => hasAmount ? money(value) : 'Pendiente';
+  return table('Resumen de totales',['Concepto','Total'],[
+    ['Entrenamientos realizados en el mes',fmt.format(rows.reduce((sum,row) => sum+row.count,0)+extras.filter(e => e.kind === 'suelto').length)],
+    ['Total entrenamientos',amount(training)],
+    ['Total primas',money(bonuses)],
+    ['Total EP',money(singles)],
+    ['Total correcciones de entrenamientos',money(corrections)],
+    ['<strong>Total sin primas</strong>','<strong>'+amount(withoutBonuses)+'</strong>'],
+    ['<strong>Total de todo</strong>','<strong>'+amount(withoutBonuses+bonuses)+'</strong>']
+  ],'',true);
+}
+
 function correctionTable(extras,locked,compact = false) {
   return table('Correcciones de meses anteriores',['Mes de origen','Socio','Modalidad','Sesiones al cerrar','Sesiones reales','Diferencia','Importe','Nota',''],
     extras.filter(e => e.kind === 'correccion').map(e => [
@@ -705,7 +723,7 @@ function openEditor(kind, id, intent) {
       table('Desglose',['Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes'],
         rows.map(({m,count,unitRate,pay}) => [esc(m.name),packageName(m),
           fmt.format(count),unitRate == null ? '—' : hourlyMoney(unitRate),pay == null ? '—' : money(pay)]),'El entrenador no tiene paquetes en este mes.',true)+
-      extraTable(extras,true,true)+correctionTable(extras,true,true)+
+      extraTable(extras,true,true)+correctionTable(extras,true,true)+reportTotals(rows,extras,hasAmount)+
       (closure || historical || !hasAmount ? '' : '<p>El cierre guarda el importe para nómina, incluidas las sesiones previstas hasta final de mes. Si el número real cambia, puedes regularizarlo en el mes siguiente con «Añadir corrección».</p>')+'</div>';
   }
   if (kind === 'correccionesNomina') {
