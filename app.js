@@ -93,14 +93,27 @@ function compareMembers(a,b) {
   return direction * memberCollator.compare(left,right) || memberCollator.compare(a.name,b.name);
 }
 
-function table(title, columns, rows, empty, compact = false) {
-  return '<section class="panel'+(compact ? ' compact-packages' : '')+'"><div class="sectionHead"><h2>'+title+'</h2></div>'+
+function table(title, columns, rows, empty, compact = false, headerActions = '') {
+  return '<section class="panel'+(compact ? ' compact-packages' : '')+'"><div class="sectionHead"><h2>'+title+'</h2>'+headerActions+'</div>'+
     (rows.length ? '<div class="scroll"><table><thead><tr>'+columns.map(c =>
       Array.isArray(c) ? memberHeader(...c) : '<th scope="col">'+c+'</th>').join('')+
       '</tr></thead><tbody>'+rows.map(r => '<tr>'+r.map((c,i) => (compact && columns[i] ?
       '<td><span class="package-cell-label" aria-hidden="true">'+columns[i]+'</span><span>'+c+'</span></td>' :
       '<td>'+c+'</td>')).join('')+'</tr>').join('')+
       '</tbody></table></div>' : '<p class="empty">'+empty+'</p>')+'</section>';
+}
+
+function harbizReviewRequest(trainer,month) {
+  const [year,number] = month.split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year,number,0)).getUTCDate();
+  return 'Revisa en Harbiz los entrenamientos de '+trainer+' de '+monthName(month)+' de '+year+
+    ', del día 1 al '+lastDay+' ambos incluidos, incluyendo las citas futuras del mes. '+
+    'Abre https://app.harbiz.io/agenda y selecciona únicamente el calendario de '+trainer+'. '+
+    'Muestra por socio su nombre, número y total de entrenamientos que cuentan. Cuenta todos los entrenamientos que no estén en naranja, aunque indiquen NO VIENE o CANCELA. '+
+    'Separa los naranjas como pendientes de mover y no los sumes; indica sus socios y fechas. '+
+    'Cuenta las sesiones compartidas una vez por cada socio. Excluye SE, SS y clases colectivas. '+
+    'Al terminar, pregúntame si quiero actualizar los entrenamientos de ese mes de '+trainer+
+    ' en Gestión de equipo (https://infinitfitnessdaganzo.github.io/gestion-de-equipo/). Espera mi confirmación antes de modificar cualquier dato o reabrir un cierre.';
 }
 
 function monthData() {
@@ -636,7 +649,8 @@ function render() {
         'No hay entrenadores para esta selección.')+
       table('Socios entrenados en '+monthName(month),
         ['N.º socio','Socio','Paquete','Entrenamientos realizados','Mes anterior · '+monthName(previousMonth),'Comisión por hora','Comisión del mes','Nota',''],
-        details,'No hay socios asignados para este mes.',true)+
+        details,'No hay socios asignados para este mes.',true,
+        '<button type="button" data-review-harbiz>Revisar en Harbiz</button>')+
       (!lockedMonth && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
         '<div class="sectionHead">'+action('add','sueltos','','Añadir EP')+'</div>' : '')+
       extraTable(extras,lockedMonth,false,futureBonusEntries($('trainer').value,month))+
@@ -1355,6 +1369,17 @@ $('content').onchange = event => {
   render();
 };
 $('content').onclick = async event => {
+  if (event.target.closest('[data-review-harbiz]')) {
+    const trainer = state.equipo.find(t => t.id === $('trainer').value);
+    if (!trainer) return notify('Selecciona un entrenador.');
+    const request = harbizReviewRequest(trainer.name,monthData().month);
+    let copied = false;
+    try { await navigator.clipboard.writeText(request); copied = true; } catch {}
+    if (!copied) window.prompt('Copia esta petición para pegarla en ChatGPT:',request);
+    window.open('https://chatgpt.com/','_blank','noopener,noreferrer');
+    notify('Petición preparada para '+trainer.name+'. Pégala en ChatGPT. Si no se abre, entra en chatgpt.com.');
+    return;
+  }
   const registerSort = event.target.closest('[data-register-sort]');
   if (registerSort) {
     const key = registerSort.dataset.registerSort;
