@@ -26,6 +26,7 @@ let editor;
 let saving = false;
 let vacationCalendarYear;
 const hiddenCalendarPeople = new Set();
+const hiddenCalendarTypes = new Set();
 const undoHistory = [];
 const redoHistory = [];
 let memberSort = {key:'name', direction:1};
@@ -376,8 +377,11 @@ function annualVacationCalendar(year) {
       '<div><strong>'+esc(person.name)+'</strong><small>'+fmt.format(used)+' de '+fmt.format(allowance)+' días cargados'+
       (outside ? ' · '+fmt.format(outside)+' en otro año natural' : '')+'</small></div></button>';
   }).join('');
-  const selected = entry => !hiddenCalendarPeople.has(entry.trainer);
+  const selected = entry => !hiddenCalendarPeople.has(entry.trainer) &&
+    !hiddenCalendarTypes.has(isVacation(entry.type) ? 'vacation' : 'absence');
   const vacationEntries = state.ausencias.filter(entry => selected(entry) && isVacation(entry.type) && vacationYear(entry) === year);
+  const annualEntries = state.ausencias.filter(entry => selected(entry) &&
+    (isVacation(entry.type) ? vacationYear(entry) === year : entry.start <= last && entry.end >= first));
   const outsideMonths = new Set();
   for (const entry of vacationEntries) {
     for (const date of datesIn(entry.start,entry.end)) {
@@ -413,15 +417,21 @@ function annualVacationCalendar(year) {
   return '<section class="panel annual-calendar"><div class="sectionHead"><h2>Calendario anual del equipo</h2>'+
     '<label>Año vacacional<input id="vacationCalendarYear" type="number" min="1900" max="9998" step="1" value="'+year+'"></label></div>'+
     '<div class="annual-legend">'+legend+'</div>'+
-    '<p class="annual-key"><span class="vacation-swatch"></span> Vacaciones <span class="vacation-swatch half-mark"></span> Medio día '+
-    '<span class="vacation-swatch absence-mark"></span> Ausencia</p>'+
+    '<div class="annual-key" role="group" aria-label="Tipo de registro">'+
+    '<button type="button" class="calendar-type" data-calendar-type="vacation" aria-pressed="'+!hiddenCalendarTypes.has('vacation')+'">'+
+      '<span class="vacation-swatch"></span> Vacaciones</button>'+
+    '<button type="button" class="calendar-type" data-calendar-type="absence" aria-pressed="'+!hiddenCalendarTypes.has('absence')+'">'+
+      '<span class="vacation-swatch absence-mark"></span> Ausencias</button>'+
+    '<small><span class="vacation-swatch half-mark"></span> Medio día de vacaciones</small></div>'+
     '<div class="annual-months">'+months+'</div></section>'+
-    table('Registro del año vacacional '+year,['Persona','Tipo','Desde','Hasta','Días','Nota',''],
-      vacationEntries.sort((a,b) => a.start.localeCompare(b.start) || nameOf(a.trainer).localeCompare(nameOf(b.trainer),'es')).map(entry => [
+    table('Registro del año vacacional '+year,['Persona','Tipo','Desde','Hasta','Duración','Nota',''],
+      annualEntries.sort((a,b) => a.start.localeCompare(b.start) || nameOf(a.trainer).localeCompare(nameOf(b.trainer),'es')).map(entry => [
         esc(nameOf(entry.trainer)),esc(entry.type),date(entry.start),date(entry.end),
-        fmt.format(entry.type === halfVacation ? 0.5 : datesIn(entry.start,entry.end).length),esc(entry.note || '—'),
+        entry.type === 'Ausencia parcial' ? hours(entry.minutes) :
+          fmt.format(entry.type === halfVacation ? 0.5 : datesIn(isVacation(entry.type) || entry.start >= first ? entry.start : first,
+            isVacation(entry.type) || entry.end <= last ? entry.end : last).length)+' días',esc(entry.note || '—'),
         action('edit','ausencias',entry.id,'Editar')+action('remove','ausencias',entry.id,'Eliminar')
-      ]),'No hay vacaciones para las personas seleccionadas en este año vacacional.');
+      ]),'No hay registros para las personas y los tipos seleccionados en este año vacacional.');
 }
 
 function render() {
@@ -1179,6 +1189,15 @@ $('content').onchange = event => {
   render();
 };
 $('content').onclick = async event => {
+  const calendarType = event.target.closest('[data-calendar-type]');
+  if (calendarType) {
+    const type = calendarType.dataset.calendarType;
+    if (hiddenCalendarTypes.has(type)) hiddenCalendarTypes.delete(type);
+    else hiddenCalendarTypes.add(type);
+    render();
+    [...$('content').querySelectorAll('[data-calendar-type]')].find(b => b.dataset.calendarType === type)?.focus();
+    return;
+  }
   const calendarPerson = event.target.closest('[data-calendar-person]');
   if (calendarPerson) {
     const id = calendarPerson.dataset.calendarPerson;

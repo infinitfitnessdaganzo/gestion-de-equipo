@@ -139,3 +139,7 @@ button.year-person{text-align:left;padding:8px 10px;background:#fff}
 button.year-person[aria-pressed="true"]{border-color:var(--person-color,#2866c1);background:#edf3fc}
 button.year-person[aria-pressed="false"]{opacity:.5}
 button.year-person small{font-weight:400}
+
+.calendar-type{display:inline-flex;align-items:center;gap:7px}
+.calendar-type[aria-pressed="true"]{background:#edf3fc;border-color:#2866c1}
+.calendar-type[aria-pressed="false"]{opacity:.5}
