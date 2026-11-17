@@ -331,20 +331,34 @@ function closingRows(trainer, month) {
   return monthlyRows(start,end,month,m => m.trainer === trainer);
 }
 
-function memberMovementMetric(trainer,month) {
+function memberMovements(trainer,month) {
   const assigned = state.socios.filter(m => m.trainer === trainer);
-  const samePerson = (a,b) => a.code && b.code ? a.code === b.code :
-    a.name.trim().toLocaleLowerCase('es') === b.name.trim().toLocaleLowerCase('es');
+  const identity = m => m.code ? 'code:'+m.code : 'name:'+m.name.trim().toLocaleLowerCase('es');
+  const samePerson = (a,b) => identity(a) === identity(b);
   const continues = (before,after) => before.trainer === after.trainer &&
     before.end === previousDay(after.start) &&
     (after.previousAssignment === before.id || samePerson(before,after));
-  const distinct = rows => new Set(rows.map(m => m.code ? 'code:'+m.code :
-    'name:'+m.name.trim().toLocaleLowerCase('es'))).size;
-  const gains = distinct(assigned.filter(m => m.start.startsWith(month) &&
-    !state.socios.some(p => p.id !== m.id && continues(p,m))));
-  const losses = distinct(assigned.filter(m => m.end?.startsWith(month) &&
-    !state.socios.some(p => p.id !== m.id && continues(m,p))));
-  return metric('Altas y bajas del mes',fmt.format(gains)+' / '+fmt.format(losses),'Altas / Bajas');
+  const distinct = rows => [...new Map(rows.map(m => [identity(m),m])).values()];
+  return {
+    gains:distinct(assigned.filter(m => m.start.startsWith(month) &&
+      !state.socios.some(p => p.id !== m.id && continues(p,m)))),
+    losses:distinct(assigned.filter(m => m.end?.startsWith(month) &&
+      !state.socios.some(p => p.id !== m.id && continues(m,p))))
+  };
+}
+
+function memberMovementMetric(trainer,month) {
+  const {gains,losses} = memberMovements(trainer,month);
+  return metric('Altas y bajas del mes',fmt.format(gains.length)+' / '+fmt.format(losses.length),'Altas / Bajas');
+}
+
+function memberMovementTable(trainer,month) {
+  const {gains,losses} = memberMovements(trainer,month);
+  const display = (members,label,key) => [...members].sort((a,b) => a[key].localeCompare(b[key]) ||
+    a.name.localeCompare(b.name,'es')).map(m => [label,esc(m.name),esc(m.code || '—'),mode(packageName(m)),date(m[key])]);
+  return table('Altas y bajas del mes',['Movimiento','Socio','N.º de socio','Modalidad','Fecha'],
+    [...display(gains,'Alta','start'),...display(losses,'Baja','end')],
+    'No hay altas ni bajas para este entrenador en el mes seleccionado.');
 }
 
 function trainingMetrics(monthly, extras) {
@@ -628,7 +642,8 @@ function render() {
       extraTable(extras,lockedMonth,false,futureBonusEntries($('trainer').value,month))+
       correctionTable(extras,lockedMonth)+
       (!lockedMonth && correctionSources($('trainer').value,month).length ?
-        '<div class="sectionHead">'+action('add','correccionesNomina','','Añadir corrección')+'</div>' : '');
+        '<div class="sectionHead">'+action('add','correccionesNomina','','Añadir corrección')+'</div>' : '')+
+      memberMovementTable($('trainer').value,month);
   }
   if (page === 'socios') {
     const today = day();
