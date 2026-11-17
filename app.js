@@ -188,6 +188,13 @@ function bonusEntries(trainer,month) {
     });
 }
 
+function futureBonusEntries(trainer,month) {
+  const months = [...new Set(state.socios.filter(m => m.trainer === trainer)
+    .map(m => eligibleBonusDay(m)?.slice(0,7)).filter(due => due && due > month))];
+  return months.flatMap(due => bonusEntries(trainer,due)).filter(e => e.status !== 'void')
+    .map(e => ({...e,future:true})).sort((a,b) => a.day.localeCompare(b.day));
+}
+
 function extrasFor(trainer,month) {
   const bonuses = bonusEntries(trainer,month).filter(e => e.pay != null);
   const singles = (state.sueltos || []).filter(s => s.trainer === trainer && s.day.startsWith(month))
@@ -199,12 +206,12 @@ function extrasFor(trainer,month) {
 
 const payTotal = rows => rows.reduce((total,row) => total + (row.pay ?? 0),0);
 
-function extraTable(extras,locked,compact = false) {
+function extraTable(extras,locked,compact = false,future = []) {
   return table('Primas por fidelidad y EP',['Fecha','Socio','Concepto','Importe',''],
-    extras.filter(e => e.kind !== 'correccion').map(e => [date(e.day),esc(e.name),
-      esc(e.kind === 'suelto' ? 'EP' : e.concept)+(e.status === 'void' ? ' · Anulada' : e.status === 'custom' ? ' · Ajustada' : '')+
-        (e.note ? '<br><small>'+esc(e.note)+'</small>' : ''),money(e.pay),
-      locked ? '' : e.kind === 'suelto' ? action('edit','sueltos',e.id,'Editar')+action('remove','sueltos',e.id,'Eliminar') :
+    [...extras.filter(e => e.kind !== 'correccion'),...future].map(e => [date(e.day),esc(e.name),
+      esc(e.kind === 'suelto' ? 'EP' : e.concept)+(e.future ? ' · Prevista' : '')+(e.status === 'void' ? ' · Anulada' : e.status === 'custom' ? ' · Ajustada' : '')+
+        (e.note ? '<br><small>'+esc(e.note)+'</small>' : ''),e.future ? esc(monthName(e.day.slice(0,7))+' '+e.day.slice(0,4)) : money(e.pay),
+      locked || e.future ? '' : e.kind === 'suelto' ? action('edit','sueltos',e.id,'Editar')+action('remove','sueltos',e.id,'Eliminar') :
         action('edit','ajustesPrimas',e.id,'Editar prima')]),
     'Sin primas por fidelidad ni EP en este mes.',compact);
 }
@@ -565,7 +572,7 @@ function render() {
         details,'No hay socios asignados para este mes.',true)+
       (!lockedMonth && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
         '<div class="sectionHead">'+action('add','sueltos','','Añadir EP')+'</div>' : '')+
-      extraTable(extras,lockedMonth)+
+      extraTable(extras,lockedMonth,false,futureBonusEntries($('trainer').value,month))+
       correctionTable(extras,lockedMonth)+
       (!lockedMonth && correctionSources($('trainer').value,month).length ?
         '<div class="sectionHead">'+action('add','correccionesNomina','','Añadir corrección')+'</div>' : '');
