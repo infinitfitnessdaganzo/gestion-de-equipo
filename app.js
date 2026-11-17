@@ -25,7 +25,8 @@ let user;
 let editor;
 let saving = false;
 let vacationCalendarYear;
-let absenceRegisterScope = 'month';
+let absenceRegisterScope = 'year';
+let absenceRegisterType = 'vacation';
 let memberTrainerFilter = '';
 let memberPackageFilter = '';
 let absenceRegisterPerson;
@@ -452,6 +453,7 @@ function absenceRegister(year,month) {
   const last = absenceRegisterScope === 'year' ? year+'-12-31' :
     month+'-'+new Date(Date.UTC(yy,mm,0)).getUTCDate();
   const entries = state.ausencias.filter(a => (!absenceRegisterPerson || a.trainer === absenceRegisterPerson) &&
+    (absenceRegisterType === 'all' || (absenceRegisterType === 'vacation' ? isVacation(a.type) : !isVacation(a.type))) &&
     (absenceRegisterScope === 'year' && isVacation(a.type) ? vacationYear(a) === year : a.start <= last && a.end >= first));
   const duration = a => a.type === 'Ausencia parcial' ? a.minutes/60 : a.type === halfVacation ? 0.5 : datesIn(a.start,a.end).length;
   const sortValue = a => absenceRegisterSort.key === 'trainer' ? nameOf(a.trainer) :
@@ -466,6 +468,7 @@ function absenceRegister(year,month) {
     (absenceRegisterSort.key === key ? absenceRegisterSort.direction === 1 ? '↑' : '↓' : '↕')+'</button>';
   const controls = '<div class="sectionHead">'+
     select('Persona','registerPerson',[['','Todo el equipo'],...state.equipo.map(t => [t.id,t.name])],absenceRegisterPerson,'id="registerPerson"')+
+    select('Tipo','registerType',[['vacation','Vacaciones'],['absence','Ausencias'],['all','Todo']],absenceRegisterType,'id="registerType"')+
     select('Periodo','registerScope',[['month','Mes seleccionado'],['year','Año vacacional completo']],absenceRegisterScope,'id="registerScope"')+
     '<span>'+esc(absenceRegisterScope === 'year' ? 'Año vacacional '+year : monthName(month)+' '+month.slice(0,4))+'</span></div>';
   return '<section class="panel"><div class="sectionHead"><h2>Registro</h2></div>'+controls+
@@ -1248,6 +1251,11 @@ $('content').onchange = event => {
   }
   if (event.target.id === 'registerPerson') {
     absenceRegisterPerson = event.target.value;
+    render();
+    return;
+  }
+  if (event.target.id === 'registerType') {
+    absenceRegisterType = event.target.value;
     render();
     return;
   }
