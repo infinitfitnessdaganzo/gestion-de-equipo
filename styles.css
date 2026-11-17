@@ -40,7 +40,10 @@ th,td{border-top:1px solid var(--line);padding:12px 16px}
 th{background:#f1f5f9;color:var(--muted);font-size:12px}
 td button{padding:5px 9px;font-size:13px;margin-right:5px}
 .badge{display:inline-block;padding:4px 8px;border-radius:6px;background:#dceeff;color:#00427c;font-size:12px;font-weight:800}
-.badge.one{background:#e9edf2;color:#354353}
+.badge.duo-1h{background:#2879c9;color:#fff}
+.badge.duo-2h{background:#16477e;color:#fff}
+.badge.one-1h{background:#ba278c;color:#fff}
+.badge.one-2h{background:#751653;color:#fff}
 .empty{padding:26px 20px;color:var(--muted);border-top:1px solid var(--line)}
 .login{max-width:440px;padding:28px;margin:5vh auto}
 .login p{margin:12px 0 22px;color:var(--muted)}

@@ -64,7 +64,7 @@ const hourlyEuro = new Intl.NumberFormat('es-ES',{
   style:'currency',currency:'EUR',maximumFractionDigits:5
 });
 const hourlyMoney = cents => hourlyEuro.format(cents / 100);
-const mode = value => '<span class="badge '+ value.split(' ')[0].toLowerCase() +'">'+ esc(value) +'</span>';
+const mode = value => '<span class="badge '+ value.toLowerCase().replace(/\s+/g,'-') +'">'+ esc(value) +'</span>';
 const activeAt = (m, d) => m.start <= d && (!m.end || m.end >= d);
 const action = (key, kind, id, label) => '<button data-act="'+key+'" data-kind="'+kind+'" data-id="'+esc(id)+'">'+label+'</button>';
 const metric = (label, value, detail = '') => '<div class="metric">'+label+'<strong>'+value+'</strong>'+
