@@ -755,7 +755,7 @@ function openEditor(kind, id, intent) {
       (hasAmount ? money(payTotal(rows)+payTotal(extras)) : 'Importe pendiente')+'</strong></p>'+
       (closure ? '<p>Fecha de cierre: '+(closure.closedAt && !Number.isNaN(Date.parse(closure.closedAt)) ?
         esc(new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(closure.closedAt))) :
-        'No registrada')+'</p><p>Los entrenamientos comprendidos entre la fecha de cierre y el último día del mes están sujetos a ajuste. Cualquier diferencia registrada se reflejará en la nómina del mes siguiente.</p>' : '')+
+        'No registrada')+'</p><p>Los entrenamientos comprendidos entre la fecha de cierre y el último día del mes están sujetos a ajuste. Cualquier diferencia registrada se reflejará en el informe del mes siguiente.</p>' : '')+
       (historical ? '<p>Mes cerrado fuera de la app. El desglose se basa en los datos actuales.</p>' : '')+
       (!hasAmount && !closure && !historical ? '<p>Se guardarán las sesiones. Puedes configurar las comisiones de este mes en Opciones.</p>' : '')+
       table('Desglose',['Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes'],
