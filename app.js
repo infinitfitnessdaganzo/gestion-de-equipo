@@ -331,6 +331,22 @@ function closingRows(trainer, month) {
   return monthlyRows(start,end,month,m => m.trainer === trainer);
 }
 
+function memberMovementMetric(trainer,month) {
+  const assigned = state.socios.filter(m => m.trainer === trainer);
+  const samePerson = (a,b) => a.code && b.code ? a.code === b.code :
+    a.name.trim().toLocaleLowerCase('es') === b.name.trim().toLocaleLowerCase('es');
+  const continues = (before,after) => before.trainer === after.trainer &&
+    before.end === previousDay(after.start) &&
+    (after.previousAssignment === before.id || samePerson(before,after));
+  const distinct = rows => new Set(rows.map(m => m.code ? 'code:'+m.code :
+    'name:'+m.name.trim().toLocaleLowerCase('es'))).size;
+  const gains = distinct(assigned.filter(m => m.start.startsWith(month) &&
+    !state.socios.some(p => p.id !== m.id && continues(p,m))));
+  const losses = distinct(assigned.filter(m => m.end?.startsWith(month) &&
+    !state.socios.some(p => p.id !== m.id && continues(m,p))));
+  return metric('Altas y bajas del mes',fmt.format(gains)+' / '+fmt.format(losses),'Altas / Bajas');
+}
+
 function trainingMetrics(monthly, extras) {
   const normalized = name => name.trim().replace(/\s+/g,' ').toLocaleLowerCase('es').normalize('NFC');
   const idsByName = new Map();
@@ -600,6 +616,7 @@ function render() {
     ]);
     $('content').innerHTML = '<div class="metrics">'+
       trainingMetrics(monthly,extras)+
+      memberMovementMetric($('trainer').value,month)+
       payrollMetric(monthly,extras,(selectedClosure ? !selectedClosure.ratesMissing && monthly.every(r => r.pay != null) : ratesReady))+
       '</div>'+closeActions+table(trainingTitle,['Entrenador',...packages,'EP','Total entrenamientos','Total para nómina','Estado'],totals,
         'No hay entrenadores para esta selección.')+
