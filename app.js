@@ -274,7 +274,7 @@ function render() {
     });
     const details = monthly.map(({m, count, unitRate, pay, closed}) => [
       esc(m.code || '—'), esc(m.name),mode(packageName(m)),
-      fmt.format(plannedTrainings(m)),fmt.format(count),unitRate == null ? '—' : hourlyMoney(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',
+      fmt.format(count),unitRate == null ? '—' : hourlyMoney(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',
       noteButton(m.id,month),
       closed ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Ajustar')
     ]);
@@ -284,7 +284,7 @@ function render() {
       '</div>'+table('Entrenamientos por entrenador',['Entrenador',...packages,'Sueltos','Total entrenamientos','Total para nómina','Estado',''],totals,
         'No hay entrenadores para esta selección.')+
       table('Socios entrenados en '+monthName(month),
-        ['N.º socio','Socio','Paquete','Entrenamientos previstos','Entrenamientos realizados','Comisión por hora','Comisión del mes','Nota',''],
+        ['N.º socio','Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes','Nota',''],
         details,'No hay socios asignados para este mes.',true)+
       (!selectedClosure && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
         '<div class="sectionHead">'+action('add','sueltos','','Añadir entrenamiento suelto')+'</div>' : '')+
@@ -390,9 +390,9 @@ function openEditor(kind, id, intent) {
     $('editorTitle').textContent = (closure ? 'Cierre de ' : 'Cerrar mes de ')+(closure?.trainerName || nameOf(id));
     fields = '<div class="wide"><p>'+esc(chosenMonth)+' · <strong>'+
       money(payTotal(rows)+payTotal(extras))+'</strong> para nómina</p>'+
-      table('Desglose',['Socio','Paquete','Entrenamientos previstos','Entrenamientos realizados','Comisión por hora','Comisión del mes'],
+      table('Desglose',['Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes'],
         rows.map(({m,count,unitRate,pay}) => [esc(m.name),packageName(m),
-          fmt.format(plannedTrainings(m)),fmt.format(count),hourlyMoney(unitRate),money(pay)]),'El entrenador no tiene paquetes en este mes.')+
+          fmt.format(count),hourlyMoney(unitRate),money(pay)]),'El entrenador no tiene paquetes en este mes.')+
       extraTable(extras,true)+
       (closure ? '' : '<p>El cierre guardará estos importes y el desglose del mes.</p>')+'</div>';
   }
@@ -435,7 +435,7 @@ function openEditor(kind, id, intent) {
     const prior = state.ajustes.find(a => a.member === id && a.month === chosenMonth);
     const count = completedTrainings(m,prior);
     fields = '<p class="wide">'+esc(m.name)+' · '+esc(chosenMonth)+'<br>'+
-      packageName(m)+' · '+plannedTrainings(m)+' entrenamientos previstos</p>'+
+      packageName(m)+'</p>'+
       input('Entrenamientos realizados','count',count,'number',
         'required min="0" step="'+(Number.isInteger(count) ? '1' : 'any')+'"');
     editor.month = chosenMonth;
