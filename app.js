@@ -25,6 +25,9 @@ let user;
 let editor;
 let saving = false;
 let vacationCalendarYear;
+let absenceRegisterScope = 'month';
+let absenceRegisterPerson;
+let absenceRegisterSort = {key:'start',direction:-1};
 const hiddenCalendarPeople = new Set();
 const hiddenCalendarTypes = new Set();
 const undoHistory = [];
@@ -437,15 +440,42 @@ function annualVacationCalendar(year) {
     '<button type="button" class="calendar-type" data-calendar-type="absence" aria-pressed="'+!hiddenCalendarTypes.has('absence')+'">'+
       '<span class="vacation-swatch absence-mark"></span> Ausencias</button>'+
     '<small><span class="vacation-swatch half-mark"></span> Medio día de vacaciones</small></div>'+
-    '<div class="annual-months">'+months+'</div></section>'+
-    table('Registro del año vacacional '+year,['Persona','Tipo','Desde','Hasta','Duración','Nota',''],
-      annualEntries.sort((a,b) => a.start.localeCompare(b.start) || nameOf(a.trainer).localeCompare(nameOf(b.trainer),'es')).map(entry => [
-        esc(nameOf(entry.trainer)),esc(entry.type),date(entry.start),date(entry.end),
-        entry.type === 'Ausencia parcial' ? hours(entry.minutes) :
-          fmt.format(entry.type === halfVacation ? 0.5 : datesIn(isVacation(entry.type) || entry.start >= first ? entry.start : first,
-            isVacation(entry.type) || entry.end <= last ? entry.end : last).length)+' días',esc(entry.note || '—'),
-        action('edit','ausencias',entry.id,'Editar')+action('remove','ausencias',entry.id,'Eliminar')
-      ]),'No hay registros para las personas y los tipos seleccionados en este año vacacional.');
+    '<div class="annual-months">'+months+'</div></section>';
+}
+
+function absenceRegister(year,month) {
+  if (absenceRegisterPerson === undefined) absenceRegisterPerson = $('trainer').value;
+  const first = absenceRegisterScope === 'year' ? year+'-01-01' : month+'-01';
+  const [yy,mm] = month.split('-').map(Number);
+  const last = absenceRegisterScope === 'year' ? year+'-12-31' :
+    month+'-'+new Date(Date.UTC(yy,mm,0)).getUTCDate();
+  const entries = state.ausencias.filter(a => (!absenceRegisterPerson || a.trainer === absenceRegisterPerson) &&
+    (absenceRegisterScope === 'year' && isVacation(a.type) ? vacationYear(a) === year : a.start <= last && a.end >= first));
+  const duration = a => a.type === 'Ausencia parcial' ? a.minutes/60 : a.type === halfVacation ? 0.5 : datesIn(a.start,a.end).length;
+  const sortValue = a => absenceRegisterSort.key === 'trainer' ? nameOf(a.trainer) :
+    absenceRegisterSort.key === 'duration' ? duration(a) :
+    absenceRegisterSort.key === 'year' ? isVacation(a.type) ? vacationYear(a) : 0 : a[absenceRegisterSort.key] || '';
+  entries.sort((a,b) => {
+    const av = sortValue(a), bv = sortValue(b);
+    return absenceRegisterSort.direction * (typeof av === 'number' ? av-bv : memberCollator.compare(av,bv)) ||
+      a.start.localeCompare(b.start);
+  });
+  const header = (label,key) => '<button type="button" data-register-sort="'+key+'">'+label+' '+
+    (absenceRegisterSort.key === key ? absenceRegisterSort.direction === 1 ? '↑' : '↓' : '↕')+'</button>';
+  const controls = '<div class="sectionHead">'+
+    select('Persona','registerPerson',[['','Todo el equipo'],...state.equipo.map(t => [t.id,t.name])],absenceRegisterPerson,'id="registerPerson"')+
+    select('Periodo','registerScope',[['month','Mes seleccionado'],['year','Año vacacional completo']],absenceRegisterScope,'id="registerScope"')+
+    '<span>'+esc(absenceRegisterScope === 'year' ? 'Año vacacional '+year : monthName(month)+' '+month.slice(0,4))+'</span></div>';
+  return '<section class="panel"><div class="sectionHead"><h2>Registro</h2></div>'+controls+
+    (entries.length ? '<div class="scroll"><table><thead><tr>'+
+      [['Persona','trainer'],['Tipo','type'],['Desde','start'],['Hasta','end'],['Año de vacaciones','year'],['Duración','duration'],['Nota','note']]
+        .map(([label,key]) => '<th scope="col"'+(absenceRegisterSort.key === key ? ' aria-sort="'+(absenceRegisterSort.direction === 1 ? 'ascending' : 'descending')+'"' : '')+'>'+header(label,key)+'</th>').join('')+'<th></th></tr></thead><tbody>'+
+      entries.map(a => '<tr>'+[
+        esc(nameOf(a.trainer)),esc(a.type),date(a.start),date(a.end),isVacation(a.type) ? vacationYear(a) : '—',
+        a.type === 'Ausencia parcial' ? hours(a.minutes) : fmt.format(duration(a))+' días',esc(a.note || '—'),
+        action('edit','ausencias',a.id,'Editar')+action('remove','ausencias',a.id,'Eliminar')
+      ].map(cell => '<td>'+cell+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>' :
+      '<p class="empty">No hay registros con estos filtros.</p>')+'</section>';
 }
 
 function render() {
@@ -569,12 +599,7 @@ function render() {
         'Año '+year+': '+fmt.format(daysByType('Ausencia completa',yearlyAbsences,firstYearDay,lastYearDay))+' días')+
       metric('Horas de ausencia parcial · '+monthName(month),hours(total(absences.filter(a => a.type === 'Ausencia parcial'))),
         'Año '+year+': '+hours(total(yearlyAbsences.filter(a => a.type === 'Ausencia parcial'))))+'</div>'+
-      table('Registro del mes',['Persona','Tipo','Desde','Hasta','Año de vacaciones','Duración parcial','Nota',''],
-        absences.sort((a,b) => b.start.localeCompare(a.start)).map(a => [esc(nameOf(a.trainer)),esc(a.type),date(a.start),date(a.end),
-          isVacation(a.type) ? fmt.format(vacationYear(a)).replace(/\./g,'') : '—',a.minutes ? hours(a.minutes) : '—',esc(a.note || '—'),
-          action('edit','ausencias',a.id,'Editar')+action('remove','ausencias',a.id,'Eliminar')]),
-        'Todavía no hay vacaciones ni ausencias registradas en este mes.')+
-      annualVacationCalendar(vacationCalendarYear ?? Number(month.slice(0,4)));
+      annualVacationCalendar(year)+absenceRegister(year,month);
   }
   if (page === 'equipo') {
     const rates = ratesFor(month);
@@ -1209,12 +1234,30 @@ document.querySelector('nav').onclick = event => {
   render();
 };
 $('content').onchange = event => {
+  if (event.target.id === 'registerPerson') {
+    absenceRegisterPerson = event.target.value;
+    render();
+    return;
+  }
+  if (event.target.id === 'registerScope') {
+    absenceRegisterScope = event.target.value;
+    render();
+    return;
+  }
   if (event.target.id !== 'vacationCalendarYear') return;
   const value = event.target.valueAsNumber;
   if (Number.isInteger(value) && value >= 1900 && value <= 9998) vacationCalendarYear = value;
   render();
 };
 $('content').onclick = async event => {
+  const registerSort = event.target.closest('[data-register-sort]');
+  if (registerSort) {
+    const key = registerSort.dataset.registerSort;
+    absenceRegisterSort = {key,direction:absenceRegisterSort.key === key ? -absenceRegisterSort.direction : 1};
+    render();
+    [...$('content').querySelectorAll('[data-register-sort]')].find(b => b.dataset.registerSort === key)?.focus();
+    return;
+  }
   const calendarType = event.target.closest('[data-calendar-type]');
   if (calendarType) {
     const type = calendarType.dataset.calendarType;
