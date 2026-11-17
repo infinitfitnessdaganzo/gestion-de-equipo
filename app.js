@@ -345,8 +345,9 @@ function trainingMetrics(monthly, extras) {
     if (!breakdown) return card;
     const count1H = people(rows.filter(row => row.m.minutes !== 480)).size;
     const count2H = people(rows.filter(row => row.m.minutes === 480)).size;
-    return card.replace('class="metric"','class="metric metric-package"').replace(/<\/div>$/,
-      '<div class="metric-package-detail"><span>1H: <b>'+fmt.format(count1H)+'</b></span><span>2H: <b>'+fmt.format(count2H)+'</b></span></div></div>');
+    return '<div class="metric metric-package"><div class="metric-package-label">'+label+'</div>'+
+      '<strong>'+fmt.format(count)+'</strong><small>'+fmt.format(workedHours)+(workedHours === 1 ? ' hora' : ' horas')+'</small>'+
+      '<div class="metric-package-detail"><span>1H: <b>'+fmt.format(count1H)+'</b></span><span>2H: <b>'+fmt.format(count2H)+'</b></span></div></div>';
   };
   const duo = active.filter(row => row.m.mode === 'Duo');
   const one = active.filter(row => row.m.mode === 'One');

@@ -147,6 +147,9 @@ button.year-person small{font-weight:400}
 .calendar-type[aria-pressed="true"]{background:#edf3fc;border-color:#2866c1}
 .calendar-type[aria-pressed="false"]{opacity:.5}
 
-.metric-package{position:relative;padding-right:88px}
-.metric-package-detail{position:absolute;right:16px;top:50%;transform:translateY(-50%);display:grid;gap:7px;font-size:12px;white-space:nowrap}
+.metric-package{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:16px;align-content:start}
+.metric-package-label{grid-column:1/-1}
+.metric-package>strong{grid-column:1;grid-row:2}
+.metric-package>small{grid-column:1;grid-row:3}
+.metric-package-detail{grid-column:2;grid-row:2/4;align-self:center;display:grid;gap:7px;font-size:12px;white-space:nowrap;text-align:right}
 .metric-package-detail b{color:var(--ink)}
