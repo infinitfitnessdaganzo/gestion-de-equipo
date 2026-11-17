@@ -253,7 +253,7 @@ function reportTotals(rows,extras,hasAmount) {
     ['Total EP',money(singles)],
     ['Total correcciones de entrenamientos',money(corrections)],
     ['<strong>Total sin primas</strong>','<strong>'+amount(withoutBonuses)+'</strong>'],
-    ['<strong>Total de todo</strong>','<strong>'+amount(withoutBonuses+bonuses)+'</strong>']
+    ['<strong>TOTAL</strong>','<strong>'+amount(withoutBonuses+bonuses)+'</strong>']
   ],'',true);
 }
 
