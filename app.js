@@ -26,6 +26,8 @@ let editor;
 let saving = false;
 let vacationCalendarYear;
 let absenceRegisterScope = 'month';
+let memberTrainerFilter = '';
+let memberPackageFilter = '';
 let absenceRegisterPerson;
 let absenceRegisterSort = {key:'start',direction:-1};
 const hiddenCalendarPeople = new Set();
@@ -561,12 +563,16 @@ function render() {
   if (page === 'socios') {
     const today = day();
     const archived = m => !!m.end && m.end <= today;
-    const rows = state.socios.slice().sort(compareMembers);
+    const rows = state.socios.filter(m => (!memberTrainerFilter || m.trainer === memberTrainerFilter) &&
+      (!memberPackageFilter || packageName(m) === memberPackageFilter)).sort(compareMembers);
     const display = m => [esc(m.name),esc(m.code || '—'),esc(nameOf(m.trainer)),mode(packageName(m)),fmt.format(m.minutes / 60),
       date(m.start),date(m.end),action('edit','socios',m.id,'Editar')+
       (!m.end ? action('switch','socios',m.id,'Cambiar modalidad')+action('close','socios',m.id,'Finalizar') : '')];
     const columns = [['Nombre del socio','name'],['N.º de socio','code'],['Entrenador','trainer'],'Paquete','Entrenamientos al mes','Desde','Hasta',''];
-    $('content').innerHTML = table('Asignaciones',columns,rows.filter(m => !archived(m)).map(display),'Añade una asignación para empezar.')+
+    $('content').innerHTML = '<div class="filters">'+
+      select('Entrenador','memberTrainerFilter',[['','Todos'],...state.equipo.map(t => [t.id,t.name])],memberTrainerFilter,'id="memberTrainerFilter"')+
+      select('Paquete','memberPackageFilter',[['','Todos'],...packages.map(p => [p,p])],memberPackageFilter,'id="memberPackageFilter"')+'</div>'+
+      table('Asignaciones',columns,rows.filter(m => !archived(m)).map(display),'No hay asignaciones con estos filtros.')+
       table('Archivados',columns,rows.filter(archived).map(display),'Todavía no hay entrenamientos archivados.');
   }
   if (page === 'ausencias') {
@@ -1234,6 +1240,12 @@ document.querySelector('nav').onclick = event => {
   render();
 };
 $('content').onchange = event => {
+  if (event.target.id === 'memberTrainerFilter' || event.target.id === 'memberPackageFilter') {
+    if (event.target.id === 'memberTrainerFilter') memberTrainerFilter = event.target.value;
+    else memberPackageFilter = event.target.value;
+    render();
+    return;
+  }
   if (event.target.id === 'registerPerson') {
     absenceRegisterPerson = event.target.value;
     render();
