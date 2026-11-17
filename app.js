@@ -239,6 +239,18 @@ function correctionSources(trainer,month,editingId,includeUnavailable = false) {
     });
 }
 
+function payrollMetric(rows,extras,hasAmount) {
+  const training = payTotal(rows);
+  const bonusesAndEP = payTotal(extras.filter(e => e.kind === 'prima' || e.kind === 'suelto'));
+  const corrections = payTotal(extras.filter(e => e.kind === 'correccion'));
+  const amount = value => hasAmount ? money(value) : '—';
+  return '<div class="metric metric-payroll"><div class="metric-payroll-label">Total</div>'+
+    '<strong>'+amount(training+payTotal(extras))+'</strong>'+
+    '<div class="metric-payroll-detail"><span>Total nómina<b>'+amount(training)+'</b></span>'+
+    '<span>Primas y EP<b>'+money(bonusesAndEP)+'</b></span>'+
+    (corrections ? '<span>Correcciones<b>'+money(corrections)+'</b></span>' : '')+'</div></div>';
+}
+
 function reportTotals(rows,extras,hasAmount) {
   const training = payTotal(rows);
   const bonuses = payTotal(extras.filter(e => e.kind === 'prima'));
@@ -588,7 +600,7 @@ function render() {
     ]);
     $('content').innerHTML = '<div class="metrics">'+
       trainingMetrics(monthly,extras)+
-      metric('Total para nómina',(selectedClosure ? !selectedClosure.ratesMissing && monthly.every(r => r.pay != null) : ratesReady) ? money(payTotal(monthly)+extraPay) : '—')+
+      payrollMetric(monthly,extras,(selectedClosure ? !selectedClosure.ratesMissing && monthly.every(r => r.pay != null) : ratesReady))+
       '</div>'+closeActions+table(trainingTitle,['Entrenador',...packages,'EP','Total entrenamientos','Total para nómina','Estado'],totals,
         'No hay entrenadores para esta selección.')+
       table('Socios entrenados en '+monthName(month),

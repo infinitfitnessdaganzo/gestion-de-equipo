@@ -153,3 +153,9 @@ button.year-person small{font-weight:400}
 .metric-package>small{grid-column:1;grid-row:3}
 .metric-package-detail{grid-column:2;grid-row:2/4;align-self:center;display:grid;gap:7px;font-size:12px;white-space:nowrap;text-align:right}
 .metric-package-detail b{color:var(--ink)}
+
+.metric-payroll{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:7px 12px;align-content:start}
+.metric-payroll-label{grid-column:1/-1}
+.metric-payroll>strong{grid-column:1;grid-row:2;align-self:center;overflow-wrap:anywhere}
+.metric-payroll-detail{grid-column:2;grid-row:2;display:grid;gap:8px;font-size:12px;text-align:right}
+.metric-payroll-detail b{display:block;color:var(--ink);margin-top:2px}
