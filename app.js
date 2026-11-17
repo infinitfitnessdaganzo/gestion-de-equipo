@@ -753,6 +753,9 @@ function openEditor(kind, id, intent) {
     $('editorTitle').textContent = (intent === 'pdf' ? 'Informe de ' : closure || historical ? 'Cierre de ' : 'Cerrar mes de ')+(closure?.trainerName || nameOf(id));
     fields = '<div class="wide"><p class="report-brand">Infinit Fitness Daganzo</p><p>'+esc(monthName(chosenMonth))+' '+esc(chosenMonth.slice(0,4))+' · <strong>'+
       (hasAmount ? money(payTotal(rows)+payTotal(extras)) : 'Importe pendiente')+'</strong></p>'+
+      (closure ? '<p>Fecha de cierre: '+(closure.closedAt && !Number.isNaN(Date.parse(closure.closedAt)) ?
+        esc(new Intl.DateTimeFormat('es-ES',{timeZone:'Europe/Madrid',day:'2-digit',month:'2-digit',year:'numeric'}).format(new Date(closure.closedAt))) :
+        'No registrada')+'</p>' : '')+
       (historical ? '<p>Mes cerrado fuera de la app. El desglose se basa en los datos actuales.</p>' : '')+
       (!hasAmount && !closure && !historical ? '<p>Se guardarán las sesiones. Puedes configurar las comisiones de este mes en Opciones.</p>' : '')+
       table('Desglose',['Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes'],
@@ -994,7 +997,7 @@ function change(form) {
       m:{id:m.id,name:m.name,code:m.code,trainer:m.trainer,mode:m.mode,minutes:m.minutes},
       adjustment,count,unitRate,pay
     }));
-    next.cierres = [...(next.cierres || []),{month,trainer:id,trainerName:nameOf(id),rows,ratesMissing:!ratesFor(month),extras:extrasFor(id,month)}];
+    next.cierres = [...(next.cierres || []),{month,trainer:id,trainerName:nameOf(id),rows,ratesMissing:!ratesFor(month),extras:extrasFor(id,month),closedAt:new Date().toISOString()}];
     if (next.mesesAnterioresAbiertos) next.mesesAnterioresAbiertos = next.mesesAnterioresAbiertos.filter(m => m.trainer !== id || m.month !== month);
     return next;
   }
