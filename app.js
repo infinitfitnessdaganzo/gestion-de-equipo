@@ -107,7 +107,7 @@ function monthData() {
   };
 }
 
-const gpRate = () => state.tarifasExtra?.single ?? 2000;
+const epRate = () => state.tarifasExtra?.single ?? 2000;
 const bonusRequirements = '<p>La prima se paga una vez por asignación si el socio sigue activo con ese entrenador y modalidad el día 1 del segundo mes posterior al alta. Por ejemplo, un alta en septiembre genera la prima el 1 de noviembre. Se aplica desde noviembre de 2026.</p>';
 const closedMonth = (trainer,month) => state.cierres?.some(c => c.trainer === trainer && c.month === month);
 
@@ -146,20 +146,20 @@ function extrasFor(trainer,month) {
           status:override?.status,note:override?.note}];
     });
   const singles = (state.sueltos || []).filter(s => s.trainer === trainer && s.day.startsWith(month))
-    .map(s => ({...s,kind:'suelto',concept:'GP'}));
+    .map(s => ({...s,kind:'suelto',concept:'EP'}));
   return [...bonuses,...singles].sort((a,b) => a.day.localeCompare(b.day));
 }
 
 const payTotal = rows => rows.reduce((total,row) => total + (row.pay ?? 0),0);
 
 function extraTable(extras,locked) {
-  return table('Primas por fidelidad y GP',['Fecha','Socio','Concepto','Importe',''],
+  return table('Primas por fidelidad y EP',['Fecha','Socio','Concepto','Importe',''],
     extras.map(e => [date(e.day),esc(e.name),
-      esc(e.kind === 'suelto' ? 'GP' : e.concept)+(e.status === 'void' ? ' · Anulada' : e.status === 'custom' ? ' · Ajustada' : '')+
+      esc(e.kind === 'suelto' ? 'EP' : e.concept)+(e.status === 'void' ? ' · Anulada' : e.status === 'custom' ? ' · Ajustada' : '')+
         (e.note ? '<br><small>'+esc(e.note)+'</small>' : ''),money(e.pay),
       locked ? '' : e.kind === 'suelto' ? action('edit','sueltos',e.id,'Editar')+action('remove','sueltos',e.id,'Eliminar') :
         action('edit','ajustesPrimas',e.id,'Editar prima')]),
-    'Sin primas por fidelidad ni GP en este mes.');
+    'Sin primas por fidelidad ni EP en este mes.');
 }
 
 function ratesFor(month) {
@@ -283,13 +283,13 @@ function render() {
     $('content').innerHTML = '<div class="metrics">'+
       trainingMetrics(monthly,extras)+
       metric('Total para nómina',ratesReady || (closed.length && monthly.every(r => r.pay != null)) ? money(payTotal(monthly)+extraPay) : '—')+
-      '</div>'+table(trainingTitle,['Entrenador',...packages,'GP','Total entrenamientos','Total para nómina','Estado',''],totals,
+      '</div>'+table(trainingTitle,['Entrenador',...packages,'EP','Total entrenamientos','Total para nómina','Estado',''],totals,
         'No hay entrenadores para esta selección.')+
       table('Socios entrenados en '+monthName(month),
         ['N.º socio','Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes','Nota',''],
         details,'No hay socios asignados para este mes.',true)+
       (!selectedClosure && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
-        '<div class="sectionHead">'+action('add','sueltos','','Añadir GP')+'</div>' : '')+
+        '<div class="sectionHead">'+action('add','sueltos','','Añadir EP')+'</div>' : '')+
       extraTable(extras,!!selectedClosure);
   }
   if (page === 'socios') {
@@ -342,7 +342,7 @@ function render() {
         const bonus = state.tarifasExtra?.[key];
         return '<tr><td>'+p+'</td><td>'+(rates ? hourlyMoney(rates[key])+' / h' : '—')+'</td><td>'+
           (bonus == null ? '—' : money(bonus))+'</td></tr>';
-      }).join('')+'<tr><td>GP</td><td>'+money(gpRate())+'</td><td>—</td></tr></tbody></table></div>'+
+      }).join('')+'<tr><td>EP</td><td>'+money(epRate())+'</td><td>—</td></tr></tbody></table></div>'+
       '<div class="sectionHead">'+bonusRequirements+'</div></section>';
   }
 }
@@ -400,15 +400,15 @@ function openEditor(kind, id, intent) {
       (closure ? '' : '<p>El cierre guardará estos importes y el desglose del mes.</p>')+'</div>';
   }
   if (kind === 'sueltos') {
-    $('editorTitle').textContent = id ? 'Editar GP' : 'Añadir GP';
+    $('editorTitle').textContent = id ? 'Editar EP' : 'Añadir EP';
     fields = trainer+input('Fecha','day',data.day || defaultDay,'date')+
       input('Nombre del socio','name',data.name,'text','required maxlength="120"')+
-      '<p class="wide">Importe para nómina: '+money(data.pay ?? gpRate())+'</p>';
+      '<p class="wide">Importe para nómina: '+money(data.pay ?? epRate())+'</p>';
   }
   if (kind === 'tarifas') {
     const current = ratesFor(chosenMonth);
     const euroAmount = 'min="0" max="10000" step="0.01"';
-    fields = '<p class="wide">Las comisiones por hora se aplican desde el mes indicado. Los importes de fidelidad y GP se actualizan al guardar.</p>'+
+    fields = '<p class="wide">Las comisiones por hora se aplican desde el mes indicado. Los importes de fidelidad y EP se actualizan al guardar.</p>'+
       packages.map((p,i) => {
         const key = rateKeys[i];
         const bonus = state.tarifasExtra?.[key];
@@ -417,7 +417,7 @@ function openEditor(kind, id, intent) {
           input('Prima por fidelidad '+p+' (€)','bonus-'+key,bonus == null ? '' : bonus/100,'number',euroAmount);
       }).join('')+
       input('Desde el mes','effective',chosenMonth,'month')+
-      input('GP (€)','single',gpRate()/100,'number','required '+euroAmount)+
+      input('EP (€)','single',epRate()/100,'number','required '+euroAmount)+
       '<div class="wide">'+bonusRequirements+'</div>';
   }
   if (kind === 'equipo') fields = input('Nombre','name',data.name,'text','required maxlength="100"');
@@ -584,7 +584,7 @@ function change(form) {
     if (closedMonth(trainer,value('day').slice(0,7)) || (data.id && closedMonth(data.trainer,data.day.slice(0,7)))) {
       throw new Error('El mes de este entrenador ya está cerrado.');
     }
-    const pay = data.pay ?? gpRate();
+    const pay = data.pay ?? epRate();
     Object.assign(record,{trainer,name:value('name'),day:value('day'),pay});
     next.sueltos ??= [];
   }
