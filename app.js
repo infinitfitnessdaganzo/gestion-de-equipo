@@ -344,6 +344,20 @@ function datesIn(start,end) {
   return days;
 }
 
+function vacationBalance(person,year) {
+  const days = new Map();
+  for (const entry of state.ausencias.filter(a => a.trainer === person.id && isVacation(a.type) && vacationYear(a) === year)) {
+    for (const date of datesIn(entry.start,entry.end)) {
+      days.set(date,Math.min(1,(days.get(date) || 0)+(entry.type === halfVacation ? 0.5 : 1)));
+    }
+  }
+  const today = day();
+  const enjoyed = [...days].filter(([date]) => date <= today).reduce((sum,[,count]) => sum+count,0);
+  const scheduled = [...days].filter(([date]) => date > today).reduce((sum,[,count]) => sum+count,0);
+  const allowance = person.vacationAllowances?.[year] ?? 23;
+  return {allowance,enjoyed,scheduled,remaining:Math.max(0,allowance-enjoyed)};
+}
+
 function annualVacationCalendar(year) {
   const people = state.equipo.filter(t => t.active || state.ausencias.some(a =>
     a.trainer === t.id && (a.start.slice(0,4) <= String(year) && a.end.slice(0,4) >= String(year) ||
@@ -372,9 +386,9 @@ function annualVacationCalendar(year) {
     const days = yearly.get(person.id);
     const used = [...days.values()].reduce((sum,count) => sum+count,0);
     const outside = [...days].filter(([date]) => !date.startsWith(String(year))).reduce((sum,[,count]) => sum+count,0);
-    const allowance = person.vacationAllowances?.[year] ?? 23;
+    const {allowance,remaining} = vacationBalance(person,year);
     return '<button type="button" class="year-person" data-calendar-person="'+esc(person.id)+'" aria-pressed="'+!hiddenCalendarPeople.has(person.id)+'"><span class="vacation-swatch" style="--person-color:'+colorOf.get(person.id)+'"></span>'+
-      '<div><strong>'+esc(person.name)+'</strong><small>'+fmt.format(used)+' de '+fmt.format(allowance)+' días cargados'+
+      '<div><strong>'+esc(person.name)+'</strong><small>'+fmt.format(used)+' de '+fmt.format(allowance)+' días cargados · '+fmt.format(remaining)+' por disfrutar'+
       (outside ? ' · '+fmt.format(outside)+' en otro año natural' : '')+'</small></div></button>';
   }).join('');
   const selected = entry => !hiddenCalendarPeople.has(entry.trainer) &&
@@ -544,7 +558,11 @@ function render() {
     const yearlyVacations = state.ausencias.filter(a => matches(a) && isVacation(a.type) && vacationYear(a) === year);
     const yearlyAbsences = state.ausencias.filter(a => matches(a) && !isVacation(a.type) &&
       a.start <= lastYearDay && a.end >= firstYearDay);
+    const selectedPerson = state.equipo.find(p => p.id === $('trainer').value);
+    const balance = selectedPerson ? vacationBalance(selectedPerson,year) : {allowance:0,enjoyed:0,scheduled:0,remaining:0};
     $('content').innerHTML = '<div class="metrics">'+
+      metric('Vacaciones por disfrutar · '+year,fmt.format(balance.remaining)+' días',
+        fmt.format(balance.enjoyed)+' disfrutados de '+fmt.format(balance.allowance)+' · '+fmt.format(balance.scheduled)+' programados')+
       metric('Días de vacaciones · '+monthName(month),fmt.format(daysByType('Vacaciones')),
         'Año vacacional '+year+': '+fmt.format(daysByType('Vacaciones',yearlyVacations,null,null))+' días')+
       metric('Días de ausencia completa · '+monthName(month),fmt.format(daysByType('Ausencia completa')),
