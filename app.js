@@ -451,9 +451,9 @@ function openEditor(kind, id, intent) {
   $('editorTitle').textContent = intent === 'rates' ? 'Comisiones por entrenamiento' : intent === 'close' ? 'Finalizar asignación' : intent === 'adjust' ? 'Entrenamientos realizados en el mes' :
     (id ? 'Editar registro' : actions[kind]);
   $('formError').hidden = true;
-  $('save').hidden = intent === 'report';
+  $('save').hidden = false;
   $('deleteMember').hidden = kind !== 'socios' || intent !== 'edit' || !data.id;
-  $('save').textContent = intent === 'closeMonth' ? 'Confirmar cierre' : 'Guardar';
+  $('save').textContent = intent === 'report' ? 'Reabrir mes' : intent === 'closeMonth' ? 'Confirmar cierre' : 'Guardar';
   $('cancel').textContent = intent === 'report' ? 'Cerrar' : 'Cancelar';
   let fields = '';
   if (kind === 'ajustesPrimas') {
@@ -685,6 +685,11 @@ function change(form) {
     return next;
   }
   if (kind === 'cierres') {
+    if (intent === 'report') {
+      if (!closedMonth(id,month)) throw new Error('Este mes ya está abierto.');
+      next.cierres = next.cierres.filter(c => c.trainer !== id || c.month !== month);
+      return next;
+    }
     if (intent !== 'closeMonth' || !ratesFor(month)) throw new Error('Configura las comisiones del mes antes de cerrarlo.');
     if (next.cierres?.some(c => c.month === month && c.trainer === id)) throw new Error('Este mes ya está cerrado.');
     if (bonusEntries(id,month).some(e => e.pay == null)) {
@@ -965,6 +970,12 @@ $('recordForm').onchange = event => {
 $('recordForm').onsubmit = async event => {
   event.preventDefault();
   if (saving) return;
+  if (editor.kind === 'cierres' && editor.intent === 'report') {
+    const hasLaterCorrections = state.correccionesNomina?.some(c =>
+      c.trainer === editor.id && c.sourceMonth === editor.month);
+    const note = hasLaterCorrections ? '\n\nHay descuentos de este mes registrados en nóminas posteriores. Si vas a ajustar esas mismas sesiones, revisa esos descuentos para evitar contarlas dos veces.' : '';
+    if (!confirm('¿Reabrir '+monthName(editor.month)+' de '+nameOf(editor.id)+' para editarlo?'+note)) return;
+  }
   $('formError').hidden = true;
   saving = $('save').disabled = true;
   try {
