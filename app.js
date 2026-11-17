@@ -109,7 +109,11 @@ function monthData() {
 
 const epRate = () => state.tarifasExtra?.single ?? 2000;
 const bonusRequirements = '<p>La prima se paga una vez por asignación si el socio sigue activo con ese entrenador y modalidad el día 1 del segundo mes posterior al alta. Por ejemplo, un alta en septiembre genera la prima el 1 de noviembre. Se aplica desde noviembre de 2026.</p><p>Tras un cambio de modalidad sin interrupción, si ya se pagó una prima, se abona únicamente la diferencia positiva al seguir activo en la nueva modalidad el día 1 del tercer mes, contando el mes del cambio como el primero.</p>';
-const closedMonth = (trainer,month) => state.cierres?.some(c => c.trainer === trainer && c.month === month);
+const firstManagedMonth = '2026-11';
+const externalClose = (trainer,month) => !!trainer && month < firstManagedMonth &&
+  !state.mesesAnterioresAbiertos?.some(m => m.trainer === trainer && m.month === month);
+const closedMonth = (trainer,month) =>
+  state.cierres?.some(c => c.trainer === trainer && c.month === month) || externalClose(trainer,month);
 
 function previousDay(iso) {
   const date = new Date(iso);
@@ -355,6 +359,7 @@ function render() {
     const sum = rows => rows.reduce((total, row) => total + row.count, 0);
     const ratesReady = !!ratesFor(month);
     const selectedClosure = closed[0];
+    const lockedMonth = closedMonth($('trainer').value,month);
     const extras = selectedClosure ? (selectedClosure.extras || []) : extrasFor($('trainer').value,month);
     const extraPay = payTotal(extras);
     const singles = extras.filter(e => e.kind === 'suelto').length;
@@ -365,10 +370,10 @@ function render() {
       const closure = closed.find(c => c.trainer === t.id);
       return [esc(closure?.trainerName || t.name),
         ...packages.map(p => fmt.format(sum(rows.filter(row => packageName(row.m) === p)))),
-        fmt.format(singles),'<strong>'+fmt.format(sum(rows)+singles)+'</strong>', '<strong>'+(closure || ratesReady ? money(payTotal(rows)+extraPay) : '—')+'</strong>',
-        closure ? 'Cerrado' : 'Abierto',
-        closure ? action('report','cierres',t.id,'Ver cierre') :
-          (ratesReady ? action('closeMonth','cierres',t.id,'Cerrar mes') : 'Configura las comisiones')];
+        fmt.format(singles),'<strong>'+fmt.format(sum(rows)+singles)+'</strong>', '<strong>'+((closure ? !closure.ratesMissing && rows.every(r => r.pay != null) : ratesReady) ? money(payTotal(rows)+extraPay) : '—')+'</strong>',
+        closure ? 'Cerrado' : externalClose(t.id,month) ? 'Cerrado fuera de la app' : 'Abierto',
+        closedMonth(t.id,month) ? action('report','cierres',t.id,'Ver cierre') :
+          (ratesReady || month < firstManagedMonth ? action('closeMonth','cierres',t.id,'Cerrar mes') : 'Configura las comisiones')];
     });
     const monthStart = new Date(month+'-01T00:00:00Z');
     monthStart.setUTCMonth(monthStart.getUTCMonth()-1);
@@ -376,23 +381,23 @@ function render() {
     const previous = correctionSources($('trainer').value,month,undefined,true).filter(r => r.month === previousMonth);
     const details = monthly.map(({m, count, unitRate, pay, closed}) => [
       esc(m.code || '—'), esc(m.name),mode(packageName(m)),
-      fmt.format(count),previousSessions(m,previous,month,!!selectedClosure),unitRate == null ? '—' : hourlyMoney(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',
+      fmt.format(count),previousSessions(m,previous,month,lockedMonth),unitRate == null ? '—' : hourlyMoney(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',
       noteButton(m.id,month),
-      closed ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Ajustar')
+      closed || lockedMonth ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Ajustar')
     ]);
     $('content').innerHTML = '<div class="metrics">'+
       trainingMetrics(monthly,extras)+
-      metric('Total para nómina',ratesReady || (closed.length && monthly.every(r => r.pay != null)) ? money(payTotal(monthly)+extraPay) : '—')+
+      metric('Total para nómina',(selectedClosure ? !selectedClosure.ratesMissing && monthly.every(r => r.pay != null) : ratesReady) ? money(payTotal(monthly)+extraPay) : '—')+
       '</div>'+table(trainingTitle,['Entrenador',...packages,'EP','Total entrenamientos','Total para nómina','Estado',''],totals,
         'No hay entrenadores para esta selección.')+
       table('Socios entrenados en '+monthName(month),
         ['N.º socio','Socio','Paquete','Entrenamientos realizados','Mes anterior · '+monthName(previousMonth),'Comisión por hora','Comisión del mes','Nota',''],
         details,'No hay socios asignados para este mes.',true)+
-      (!selectedClosure && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
+      (!lockedMonth && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
         '<div class="sectionHead">'+action('add','sueltos','','Añadir EP')+'</div>' : '')+
-      extraTable(extras,!!selectedClosure)+
-      correctionTable(extras,!!selectedClosure)+
-      (!selectedClosure && correctionSources($('trainer').value,month).length ?
+      extraTable(extras,lockedMonth)+
+      correctionTable(extras,lockedMonth)+
+      (!lockedMonth && correctionSources($('trainer').value,month).length ?
         '<div class="sectionHead">'+action('add','correccionesNomina','','Añadir corrección')+'</div>' : '');
   }
   if (page === 'socios') {
@@ -495,14 +500,18 @@ function openEditor(kind, id, intent) {
     const closure = state.cierres?.find(c => c.trainer === id && c.month === chosenMonth);
     const rows = closure?.rows ?? closingRows(id,chosenMonth);
     const extras = closure ? (closure.extras || []) : extrasFor(id,chosenMonth);
-    $('editorTitle').textContent = (closure ? 'Cierre de ' : 'Cerrar mes de ')+(closure?.trainerName || nameOf(id));
+    const historical = !closure && externalClose(id,chosenMonth);
+    const hasAmount = (closure ? !closure.ratesMissing : !!ratesFor(chosenMonth)) && rows.every(r => r.pay != null);
+    $('editorTitle').textContent = (closure || historical ? 'Cierre de ' : 'Cerrar mes de ')+(closure?.trainerName || nameOf(id));
     fields = '<div class="wide"><p>'+esc(chosenMonth)+' · <strong>'+
-      money(payTotal(rows)+payTotal(extras))+'</strong> para nómina</p>'+
+      (hasAmount ? money(payTotal(rows)+payTotal(extras)) : 'Importe pendiente')+'</strong></p>'+
+      (historical ? '<p>Mes cerrado fuera de la app. El desglose se basa en los datos actuales.</p>' : '')+
+      (!hasAmount && !closure && !historical ? '<p>Se guardarán las sesiones. Puedes configurar las comisiones de este mes en Opciones.</p>' : '')+
       table('Desglose',['Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes'],
         rows.map(({m,count,unitRate,pay}) => [esc(m.name),packageName(m),
-          fmt.format(count),hourlyMoney(unitRate),money(pay)]),'El entrenador no tiene paquetes en este mes.')+
+          fmt.format(count),unitRate == null ? '—' : hourlyMoney(unitRate),pay == null ? '—' : money(pay)]),'El entrenador no tiene paquetes en este mes.')+
       extraTable(extras,true)+correctionTable(extras,true)+
-      (closure ? '' : '<p>El cierre guarda el importe para nómina, incluidas las sesiones previstas hasta final de mes. Si el número real cambia, puedes regularizarlo en el mes siguiente con «Añadir corrección».</p>')+'</div>';
+      (closure || historical || !hasAmount ? '' : '<p>El cierre guarda el importe para nómina, incluidas las sesiones previstas hasta final de mes. Si el número real cambia, puedes regularizarlo en el mes siguiente con «Añadir corrección».</p>')+'</div>';
   }
   if (kind === 'correccionesNomina') {
     const sources = correctionSources(t,chosenMonth,id);
@@ -718,11 +727,14 @@ function change(form) {
   if (kind === 'cierres') {
     if (intent === 'report') {
       if (!closedMonth(id,month)) throw new Error('Este mes ya está abierto.');
-      next.cierres = next.cierres.filter(c => c.trainer !== id || c.month !== month);
+      next.cierres = (next.cierres || []).filter(c => c.trainer !== id || c.month !== month);
+      if (month < firstManagedMonth && !next.mesesAnterioresAbiertos?.some(m => m.trainer === id && m.month === month)) {
+        next.mesesAnterioresAbiertos = [...(next.mesesAnterioresAbiertos || []),{trainer:id,month}];
+      }
       return next;
     }
-    if (intent !== 'closeMonth' || !ratesFor(month)) throw new Error('Configura las comisiones del mes antes de cerrarlo.');
-    if (next.cierres?.some(c => c.month === month && c.trainer === id)) throw new Error('Este mes ya está cerrado.');
+    if (intent !== 'closeMonth' || (month >= firstManagedMonth && !ratesFor(month))) throw new Error('Configura las comisiones del mes antes de cerrarlo.');
+    if (closedMonth(id,month)) throw new Error('Este mes ya está cerrado.');
     if (bonusEntries(id,month).some(e => e.pay == null)) {
       throw new Error('Configura los importes de las primas en Opciones antes de cerrar el mes.');
     }
@@ -730,7 +742,8 @@ function change(form) {
       m:{id:m.id,name:m.name,code:m.code,trainer:m.trainer,mode:m.mode,minutes:m.minutes},
       adjustment,count,unitRate,pay
     }));
-    next.cierres = [...(next.cierres || []),{month,trainer:id,trainerName:nameOf(id),rows,extras:extrasFor(id,month)}];
+    next.cierres = [...(next.cierres || []),{month,trainer:id,trainerName:nameOf(id),rows,ratesMissing:!ratesFor(month),extras:extrasFor(id,month)}];
+    if (next.mesesAnterioresAbiertos) next.mesesAnterioresAbiertos = next.mesesAnterioresAbiertos.filter(m => m.trainer !== id || m.month !== month);
     return next;
   }
   if (kind === 'correccionesNomina') {
@@ -838,7 +851,7 @@ function change(form) {
     return next;
   }
   if (kind === 'ajustes') {
-    if (next.cierres?.some(c => c.month === month && c.trainer === member(id).trainer)) throw new Error('Este mes ya está cerrado.');
+    if (closedMonth(member(id).trainer,month)) throw new Error('Este mes ya está cerrado.');
     const m = member(id);
     const prior = next.ajustes.find(a => a.member === id && a.month === month);
     const count = Number(value('count'));
@@ -904,11 +917,12 @@ function readBackup(raw) {
       !array('tarifas',t => month(t.month) && rates(t.rates) && optional(t.perHour,v => typeof v === 'boolean')) ||
       !optional(data.tarifasExtra,v => object(v) && rateKeys.every(key => optional(v[key],amount)) && amount(v.single)) ||
       !array('correccionesNomina',correctionRow) ||
+      !array('mesesAnterioresAbiertos',m => string(m.trainer) && month(m.month) && m.month < firstManagedMonth) ||
       !array('sueltos',s => string(s.id) && string(s.trainer) && iso(s.day) && string(s.name) && amount(s.pay)) ||
       !array('notasMensuales',n => string(n.member) && month(n.month) && string(n.text)) ||
       !array('ajustesPrimas',a => string(a.member) && string(a.trainer) && month(a.month) && optional(a.pay,amount)) ||
       !array('cierres',c => string(c.trainer) && month(c.month) && Array.isArray(c.rows) &&
-        c.rows.every(r => object(r) && object(r.m) && memberRow(r.m) && amount(r.count) && amount(r.pay)) &&
+        c.rows.every(r => object(r) && object(r.m) && memberRow(r.m) && amount(r.count) && (amount(r.pay) || (c.month < firstManagedMonth && r.pay === null))) &&
         optional(c.extras,rows => Array.isArray(rows) && rows.every(extraRow)))) {
     throw new Error('El archivo no es una copia válida de Gestión de equipo.');
   }
