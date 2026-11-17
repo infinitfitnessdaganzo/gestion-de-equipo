@@ -602,12 +602,12 @@ function render() {
     $('content').innerHTML = '<div class="metrics">'+
       metric('Vacaciones por solicitar · '+year,fmt.format(balance.remaining)+' días',
         fmt.format(balance.enjoyed)+' disfrutados de '+fmt.format(balance.allowance)+' · '+fmt.format(balance.scheduled)+' programados')+
-      metric('Días de vacaciones · '+monthName(month),fmt.format(daysByType('Vacaciones')),
-        'Año vacacional '+year+': '+fmt.format(daysByType('Vacaciones',yearlyVacations,null,null))+' días')+
-      metric('Días de ausencia completa · '+monthName(month),fmt.format(daysByType('Ausencia completa')),
-        'Año '+year+': '+fmt.format(daysByType('Ausencia completa',yearlyAbsences,firstYearDay,lastYearDay))+' días')+
-      metric('Horas de ausencia parcial · '+monthName(month),hours(total(absences.filter(a => a.type === 'Ausencia parcial'))),
-        'Año '+year+': '+hours(total(yearlyAbsences.filter(a => a.type === 'Ausencia parcial'))))+'</div>'+
+      metric('Días de vacaciones · '+year,fmt.format(daysByType('Vacaciones',yearlyVacations,null,null)),
+        monthName(month)+' '+month.slice(0,4)+': '+fmt.format(daysByType('Vacaciones'))+' días')+
+      metric('Días de ausencia completa · '+year,fmt.format(daysByType('Ausencia completa',yearlyAbsences,firstYearDay,lastYearDay)),
+        monthName(month)+' '+month.slice(0,4)+': '+fmt.format(daysByType('Ausencia completa'))+' días')+
+      metric('Horas de ausencia parcial · '+year,hours(total(yearlyAbsences.filter(a => a.type === 'Ausencia parcial'))),
+        monthName(month)+' '+month.slice(0,4)+': '+hours(total(absences.filter(a => a.type === 'Ausencia parcial'))))+'</div>'+
       annualVacationCalendar(year)+absenceRegister(year,month);
   }
   if (page === 'equipo') {
