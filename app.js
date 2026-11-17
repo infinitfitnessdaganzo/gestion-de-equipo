@@ -570,7 +570,7 @@ function render() {
       (!m.end ? action('switch','socios',m.id,'Cambiar modalidad')+action('close','socios',m.id,'Finalizar') : '')];
     const columns = [['Nombre del socio','name'],['N.º de socio','code'],['Entrenador','trainer'],'Paquete','Entrenamientos al mes','Desde','Hasta',''];
     $('content').innerHTML = '<div class="filters">'+
-      select('Entrenador','memberTrainerFilter',[['','Todos'],...state.equipo.map(t => [t.id,t.name])],memberTrainerFilter,'id="memberTrainerFilter"')+
+      select('Entrenador','memberTrainerFilter',[['','Todos'],...state.equipo.filter(t => !t.absenceOnly).map(t => [t.id,t.name])],memberTrainerFilter,'id="memberTrainerFilter"')+
       select('Paquete','memberPackageFilter',[['','Todos'],...packages.map(p => [p,p])],memberPackageFilter,'id="memberPackageFilter"')+'</div>'+
       table('Asignaciones',columns,rows.filter(m => !archived(m)).map(display),'No hay asignaciones con estos filtros.')+
       table('Archivados',columns,rows.filter(archived).map(display),'Todavía no hay entrenamientos archivados.');
