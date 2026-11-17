@@ -526,11 +526,11 @@ function render() {
       table('Archivados',columns,rows.filter(archived).map(display),'Todavía no hay entrenamientos archivados.');
   }
   if (page === 'ausencias') {
-    const daysByType = type => {
+    const daysByType = (type, entries = absences, from = start, until = end) => {
       const days = new Map();
-      for (const a of absences.filter(a => a.type === type || (type === 'Vacaciones' && a.type === halfVacation))) {
-        const cursor = new Date(a.start < start ? start : a.start);
-        const last = a.end > end ? end : a.end;
+      for (const a of entries.filter(a => a.type === type || (type === 'Vacaciones' && a.type === halfVacation))) {
+        const cursor = new Date(from && a.start < from ? from : a.start);
+        const last = until && a.end > until ? until : a.end;
         while (cursor.toISOString().slice(0,10) <= last) {
           const key = a.trainer + cursor.toISOString().slice(0,10);
           days.set(key,Math.min(1,(days.get(key) || 0)+(a.type === halfVacation ? 0.5 : 1)));
@@ -539,10 +539,18 @@ function render() {
       }
       return [...days.values()].reduce((sum,count) => sum+count,0);
     };
+    const year = vacationCalendarYear ?? Number(month.slice(0,4));
+    const firstYearDay = year+'-01-01', lastYearDay = year+'-12-31';
+    const yearlyVacations = state.ausencias.filter(a => matches(a) && isVacation(a.type) && vacationYear(a) === year);
+    const yearlyAbsences = state.ausencias.filter(a => matches(a) && !isVacation(a.type) &&
+      a.start <= lastYearDay && a.end >= firstYearDay);
     $('content').innerHTML = '<div class="metrics">'+
-      metric('Días de vacaciones',fmt.format(daysByType('Vacaciones')))+
-      metric('Días de ausencia completa',daysByType('Ausencia completa'))+
-      metric('Horas de ausencia parcial',hours(total(absences.filter(a => a.type === 'Ausencia parcial'))))+'</div>'+
+      metric('Días de vacaciones · '+monthName(month),fmt.format(daysByType('Vacaciones')),
+        'Año vacacional '+year+': '+fmt.format(daysByType('Vacaciones',yearlyVacations,null,null))+' días')+
+      metric('Días de ausencia completa · '+monthName(month),fmt.format(daysByType('Ausencia completa')),
+        'Año '+year+': '+fmt.format(daysByType('Ausencia completa',yearlyAbsences,firstYearDay,lastYearDay))+' días')+
+      metric('Horas de ausencia parcial · '+monthName(month),hours(total(absences.filter(a => a.type === 'Ausencia parcial'))),
+        'Año '+year+': '+hours(total(yearlyAbsences.filter(a => a.type === 'Ausencia parcial'))))+'</div>'+
       table('Registro del mes',['Persona','Tipo','Desde','Hasta','Año de vacaciones','Duración parcial','Nota',''],
         absences.sort((a,b) => b.start.localeCompare(a.start)).map(a => [esc(nameOf(a.trainer)),esc(a.type),date(a.start),date(a.end),
           isVacation(a.type) ? fmt.format(vacationYear(a)).replace(/\./g,'') : '—',a.minutes ? hours(a.minutes) : '—',esc(a.note || '—'),
