@@ -369,7 +369,14 @@ function annualVacationCalendar(year) {
     a.trainer === t.id && (a.start.slice(0,4) <= String(year) && a.end.slice(0,4) >= String(year) ||
       isVacation(a.type) && vacationYear(a) === year)));
   const colors = ['#2866c1','#168054','#9b4db8','#b95b19','#a83c5c','#087d90'];
-  const colorOf = new Map(people.map((person,index) => [person.id, colors[index % colors.length]]));
+  const personColor = (person,index) => {
+    const name = person.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+    if (name === 'salma' || name.startsWith('salma ')) return '#d64b91';
+    if (name === 'cesar' || name.startsWith('cesar ')) return '#168054';
+    if (name === 'fernando' || name.startsWith('fernando ')) return '#2866c1';
+    return colors[index % colors.length];
+  };
+  const colorOf = new Map(people.map((person,index) => [person.id, personColor(person,index)]));
   const first = year+'-01-01', last = year+'-12-31';
   const events = new Map();
   const yearly = new Map(people.map(person => [person.id,new Map()]));
