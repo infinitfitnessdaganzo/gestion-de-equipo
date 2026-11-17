@@ -180,7 +180,7 @@ function extrasFor(trainer,month) {
   const singles = (state.sueltos || []).filter(s => s.trainer === trainer && s.day.startsWith(month))
     .map(s => ({...s,kind:'suelto',concept:'EP'}));
   const corrections = (state.correccionesNomina || []).filter(c => c.trainer === trainer && c.month === month)
-    .map(c => ({...c,kind:'correccion',day:month+'-01',concept:'Descuento de '+c.sourceMonth}));
+    .map(c => ({...c,kind:'correccion',day:month+'-01',concept:'Corrección de '+c.sourceMonth}));
   return [...bonuses,...singles,...corrections].sort((a,b) => a.day.localeCompare(b.day));
 }
 
@@ -196,33 +196,51 @@ function extraTable(extras,locked) {
     'Sin primas por fidelidad ni EP en este mes.');
 }
 
-function correctionSources(trainer,month,editingId) {
+function correctionSources(trainer,month,editingId,includeUnavailable = false) {
   const existing = (state.correccionesNomina || []).filter(c => c.trainer === trainer && c.id !== editingId);
   return (state.cierres || []).filter(c => c.trainer === trainer && c.month < month)
     .sort((a,b) => b.month.localeCompare(a.month))
     .flatMap(c => {
       const packages = c.rows.map(({m,count,unitRate,pay}) => ({
-        key:'paquete:'+m.id,name:m.name,label:packageName(m),count,unitRate,pay
+        key:'paquete:'+m.id,code:m.code,name:m.name,label:packageName(m),count,unitRate,pay
       }));
       const singles = (c.extras || []).filter(e => e.kind === 'suelto').map(e => ({
         key:'ep:'+e.id,name:e.name,label:'EP · '+date(e.day),count:1,unitRate:e.pay,pay:e.pay
       }));
       return [...packages,...singles].flatMap(row => {
         const used = existing.filter(e => e.sourceMonth === c.month && e.sourceKey === row.key);
-        const remaining = Math.floor(row.count - used.reduce((sum,e) => sum+e.count,0));
-        if (remaining < 1 || !Number.isFinite(row.unitRate)) return [];
-        return [{...row,month:c.month,value:c.month+'|'+row.key,remaining,
-          remainingPay:Math.max(0,row.pay+payTotal(used))}];
+        const available = !used.some(e => e.month >= month);
+        if ((!available && !includeUnavailable) || !Number.isFinite(row.unitRate)) return [];
+        const prior = used.filter(e => e.month <= month);
+        return [{...row,month:c.month,value:c.month+'|'+row.key,available,
+          reconciled:prior.length > 0,accounted:row.count-prior.reduce((sum,e) => sum+e.count,0),
+          accountedPay:row.pay+payTotal(prior)}];
       }).sort((a,b) => a.name.localeCompare(b.name,'es') || a.label.localeCompare(b.label,'es'));
     });
 }
 
 function correctionTable(extras,locked) {
-  return table('Correcciones de meses anteriores',['Mes de origen','Socio','Modalidad','Entrenamientos a descontar','Importe','Nota',''],
+  return table('Correcciones de meses anteriores',['Mes de origen','Socio','Modalidad','Sesiones al cerrar','Sesiones reales','Diferencia','Importe','Nota',''],
     extras.filter(e => e.kind === 'correccion').map(e => [
-      esc(e.sourceMonth),esc(e.name),esc(e.label),fmt.format(e.count),money(e.pay),esc(e.note || '—'),
+      esc(e.sourceMonth),esc(e.name),esc(e.label),e.originalCount == null ? '—' : fmt.format(e.originalCount),
+      e.actualCount == null ? '—' : fmt.format(e.actualCount),signedCount(-e.count),money(e.pay),esc(e.note || '—'),
       locked ? '' : action('edit','correccionesNomina',e.id,'Editar')+action('remove','correccionesNomina',e.id,'Eliminar')
     ]),'No hay correcciones en este mes.');
+}
+
+const signedCount = n => (n > 0 ? '+' : '')+fmt.format(n);
+
+function previousSessions(member,previous,month,locked) {
+  const exact = previous.find(r => r.key === 'paquete:'+member.id);
+  const sameNumber = previous.filter(r => r.key.startsWith('paquete:') && member.code && r.code === member.code);
+  const row = exact || (sameNumber.length === 1 ? sameNumber[0] : null);
+  if (!row) return '—';
+  const saved = state.correccionesNomina?.find(e => e.trainer === member.trainer && e.month === month &&
+    e.sourceMonth === row.month && e.sourceKey === row.key);
+  const label = (row.reconciled ? fmt.format(row.accounted)+' reales · ' : '')+fmt.format(row.count)+' al cerrar';
+  if (locked) return label;
+  return label+'<br>'+(saved ? action('edit','correccionesNomina',saved.id,'Ajustar anterior') :
+    row.available ? action('reconcile','correccionesNomina',row.value,'Ajustar anterior') : '');
 }
 
 function ratesFor(month) {
@@ -352,9 +370,13 @@ function render() {
         closure ? action('report','cierres',t.id,'Ver cierre') :
           (ratesReady ? action('closeMonth','cierres',t.id,'Cerrar mes') : 'Configura las comisiones')];
     });
+    const monthStart = new Date(month+'-01T00:00:00Z');
+    monthStart.setUTCMonth(monthStart.getUTCMonth()-1);
+    const previousMonth = monthStart.toISOString().slice(0,7);
+    const previous = correctionSources($('trainer').value,month,undefined,true).filter(r => r.month === previousMonth);
     const details = monthly.map(({m, count, unitRate, pay, closed}) => [
       esc(m.code || '—'), esc(m.name),mode(packageName(m)),
-      fmt.format(count),unitRate == null ? '—' : hourlyMoney(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',
+      fmt.format(count),previousSessions(m,previous,month,!!selectedClosure),unitRate == null ? '—' : hourlyMoney(unitRate),'<strong>'+(pay == null ? '—' : money(pay))+'</strong>',
       noteButton(m.id,month),
       closed ? 'Mes cerrado' : action('adjust','ajustes',m.id,'Ajustar')
     ]);
@@ -364,7 +386,7 @@ function render() {
       '</div>'+table(trainingTitle,['Entrenador',...packages,'EP','Total entrenamientos','Total para nómina','Estado',''],totals,
         'No hay entrenadores para esta selección.')+
       table('Socios entrenados en '+monthName(month),
-        ['N.º socio','Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes','Nota',''],
+        ['N.º socio','Socio','Paquete','Entrenamientos realizados','Mes anterior · '+monthName(previousMonth),'Comisión por hora','Comisión del mes','Nota',''],
         details,'No hay socios asignados para este mes.',true)+
       (!selectedClosure && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
         '<div class="sectionHead">'+action('add','sueltos','','Añadir EP')+'</div>' : '')+
@@ -480,17 +502,20 @@ function openEditor(kind, id, intent) {
         rows.map(({m,count,unitRate,pay}) => [esc(m.name),packageName(m),
           fmt.format(count),hourlyMoney(unitRate),money(pay)]),'El entrenador no tiene paquetes en este mes.')+
       extraTable(extras,true)+correctionTable(extras,true)+
-      (closure ? '' : '<p>El cierre guarda el importe para nómina, incluidas las sesiones previstas hasta final de mes. Si alguna no se realiza, puedes descontarla en el mes siguiente con «Añadir corrección».</p>')+'</div>';
+      (closure ? '' : '<p>El cierre guarda el importe para nómina, incluidas las sesiones previstas hasta final de mes. Si el número real cambia, puedes regularizarlo en el mes siguiente con «Añadir corrección».</p>')+'</div>';
   }
   if (kind === 'correccionesNomina') {
     const sources = correctionSources(t,chosenMonth,id);
     if (!sources.length || closedMonth(t,chosenMonth)) return;
     editor.trainer = t;
     $('editorTitle').textContent = id ? 'Editar corrección de nómina' : 'Corregir un mes anterior';
-    const selected = data.sourceMonth ? data.sourceMonth+'|'+data.sourceKey : undefined;
-    fields = '<p class="wide">El descuento se aplica en '+esc(chosenMonth)+' con la comisión que se usó en el mes de origen.</p>'+
+    const selected = intent === 'reconcile' ? id : data.sourceMonth ? data.sourceMonth+'|'+data.sourceKey : sources[0].value;
+    const origin = sources.find(row => row.value === selected);
+    if (!origin) return notify('Esta corrección tiene un ajuste posterior o su mes de origen está abierto.');
+    if (intent === 'reconcile') editor.id = undefined;
+    fields = '<p class="wide">La diferencia se aplica en '+esc(chosenMonth)+' con la comisión del cierre original.</p>'+
       select('Entrenamiento del mes de origen','source',sources.map(row => [row.value,row.month+' · '+row.name+' · '+row.label]),selected)+
-      input('Entrenamientos que no se hicieron','count',data.count ?? 1,'number','required min="1" step="1"')+
+      input('Entrenamientos realizados realmente','count',data.actualCount ?? origin.accounted-(data.count || 0),'number','required min="0" step="1"')+
       '<p class="wide" id="correctionPreview" aria-live="polite"></p>'+
       input('Nota (opcional)','note',data.note,'text','maxlength="250"');
   }
@@ -645,19 +670,25 @@ function showBonusPay() {
   fields.bonusPay.closest('label').hidden = !custom;
 }
 
-function correctionPay(source,count) {
-  if (count === source.remaining && Number.isInteger(source.count)) return -source.remainingPay;
-  return -Math.min(source.remainingPay,Math.round(source.unitRate*count));
+function correctionPay(source,actual) {
+  return Math.round(source.unitRate*actual)-source.accountedPay;
 }
 
-function showCorrectionPreview() {
+function validActual(source,count) {
+  return Number.isSafeInteger(count) && count >= 0 && (source.key.startsWith('paquete:') || count <= 1) &&
+    Number.isSafeInteger(correctionPay(source,count));
+}
+
+function showCorrectionPreview(reset = false) {
   const fields = $('recordForm').elements;
   const source = correctionSources(editor.trainer,editor.month,editor.id).find(row => row.value === fields.source.value);
   if (!source) return;
-  fields.count.max = source.remaining;
+  if (reset) fields.count.value = source.accounted;
+  fields.count.max = source.key.startsWith('ep:') ? '1' : '';
   const count = fields.count.valueAsNumber;
-  $('correctionPreview').textContent = 'Disponibles para corregir: '+source.remaining+' · Comisión original: '+hourlyMoney(source.unitRate)+
-    (Number.isInteger(count) && count >= 1 && count <= source.remaining ? ' · Descuento: '+money(correctionPay(source,count)) : '');
+  $('correctionPreview').textContent = 'Al cerrar: '+fmt.format(source.count)+' · Ya contabilizados: '+fmt.format(source.accounted)+
+    ' · Comisión original: '+hourlyMoney(source.unitRate)+
+    (validActual(source,count) ? ' · Ajuste: '+signedCount(count-source.accounted)+' sesiones ('+money(correctionPay(source,count))+')' : '');
 }
 
 function change(form) {
@@ -706,12 +737,13 @@ function change(form) {
     const target = editor.trainer;
     if (closedMonth(target,month)) throw new Error('Este mes ya está cerrado.');
     const source = correctionSources(target,month,id).find(row => row.value === value('source'));
-    const count = Number(value('count'));
-    if (!source || !Number.isSafeInteger(count) || count < 1 || count > source.remaining) {
-      throw new Error('Elige un registro de un cierre anterior e indica cuántos entrenamientos quedan por descontar.');
+    const actual = Number(value('count'));
+    if (!source || !value('count') || !validActual(source,actual)) {
+      throw new Error('Elige un registro de un cierre anterior e indica el total real de sesiones.');
     }
     Object.assign(record,{trainer:target,month,sourceMonth:source.month,sourceKey:source.key,
-      name:source.name,label:source.label,count,pay:correctionPay(source,count),note});
+      name:source.name,label:source.label,originalCount:source.count,actualCount:actual,
+      count:source.accounted-actual,pay:correctionPay(source,actual),note});
     next.correccionesNomina ??= [];
   }
   if (kind === 'sueltos') {
@@ -860,7 +892,7 @@ function readBackup(raw) {
   const rates = value => object(value) && rateKeys.every(key => amount(value[key]));
   const correctionRow = e => string(e.id) && string(e.trainer) && month(e.month) &&
     month(e.sourceMonth) && e.sourceMonth < e.month && string(e.sourceKey) && string(e.name) &&
-    string(e.label) && Number.isSafeInteger(e.count) && e.count > 0 && Number.isFinite(e.pay) && e.pay <= 0 && string(e.note);
+    string(e.label) && Number.isFinite(e.count) && Number.isFinite(e.pay) && optional(e.originalCount,amount) && optional(e.actualCount,amount) && string(e.note);
   const extraRow = e => object(e) && string(e.id) && iso(e.day) && string(e.name) &&
     string(e.concept) && (e.kind === 'correccion' ? correctionRow(e) : amount(e.pay) && ['prima','suelto'].includes(e.kind));
   if (backup?.format !== backupFormat || backup.version !== 1 || !object(data) ||
@@ -960,7 +992,7 @@ $('deleteMember').onclick = async () => {
 $('cancel').onclick = $('close').onclick = () => { if (!saving) $('editor').close(); };
 $('editor').addEventListener('cancel', event => { if (saving) event.preventDefault(); });
 $('recordForm').oninput = event => {
-  if (editor.kind === 'correccionesNomina' && ['source','count'].includes(event.target.name)) showCorrectionPreview();
+  if (editor.kind === 'correccionesNomina' && ['source','count'].includes(event.target.name)) showCorrectionPreview(event.target.name === 'source');
 };
 $('recordForm').onchange = event => {
   const field = event.target.name;
@@ -973,7 +1005,7 @@ $('recordForm').onsubmit = async event => {
   if (editor.kind === 'cierres' && editor.intent === 'report') {
     const hasLaterCorrections = state.correccionesNomina?.some(c =>
       c.trainer === editor.id && c.sourceMonth === editor.month);
-    const note = hasLaterCorrections ? '\n\nHay descuentos de este mes registrados en nóminas posteriores. Si vas a ajustar esas mismas sesiones, revisa esos descuentos para evitar contarlas dos veces.' : '';
+    const note = hasLaterCorrections ? '\n\nHay correcciones de este mes registrados en nóminas posteriores. Si vas a ajustar esas mismas sesiones, revisa esas correcciones para evitar contarlas dos veces.' : '';
     if (!confirm('¿Reabrir '+monthName(editor.month)+' de '+nameOf(editor.id)+' para editarlo?'+note)) return;
   }
   $('formError').hidden = true;
@@ -1016,6 +1048,11 @@ $('content').onclick = async event => {
     if (kind === 'correccionesNomina') {
       const entry = state.correccionesNomina?.find(c => c.id === id);
       if (!entry || closedMonth(entry.trainer,entry.month)) return notify('El mes ya está cerrado.');
+    }
+    if (kind === 'correccionesNomina') {
+      const entry = state.correccionesNomina.find(c => c.id === id);
+      if (state.correccionesNomina.some(c => c.trainer === entry.trainer && c.sourceMonth === entry.sourceMonth &&
+          c.sourceKey === entry.sourceKey && c.month > entry.month)) return notify('Hay una corrección posterior para este registro.');
     }
     if (!confirm('¿Eliminar este registro?')) return;
     next[kind] = next[kind].filter(r => r.id !== id);
