@@ -16,7 +16,7 @@ const titles = {
 };
 const actions = {
   resumen: 'Asignar socio', socios: 'Asignar socio',
-  ausencias: 'Registrar ausencia', equipo: 'Añadir entrenador'
+  ausencias: 'Registrar día/s', equipo: 'Añadir entrenador'
 };
 let page = 'resumen';
 let state;
