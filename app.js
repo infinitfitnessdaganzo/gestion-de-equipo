@@ -179,19 +179,50 @@ function extrasFor(trainer,month) {
   const bonuses = bonusEntries(trainer,month).filter(e => e.pay != null);
   const singles = (state.sueltos || []).filter(s => s.trainer === trainer && s.day.startsWith(month))
     .map(s => ({...s,kind:'suelto',concept:'EP'}));
-  return [...bonuses,...singles].sort((a,b) => a.day.localeCompare(b.day));
+  const corrections = (state.correccionesNomina || []).filter(c => c.trainer === trainer && c.month === month)
+    .map(c => ({...c,kind:'correccion',day:month+'-01',concept:'Descuento de '+c.sourceMonth}));
+  return [...bonuses,...singles,...corrections].sort((a,b) => a.day.localeCompare(b.day));
 }
 
 const payTotal = rows => rows.reduce((total,row) => total + (row.pay ?? 0),0);
 
 function extraTable(extras,locked) {
   return table('Primas por fidelidad y EP',['Fecha','Socio','Concepto','Importe',''],
-    extras.map(e => [date(e.day),esc(e.name),
+    extras.filter(e => e.kind !== 'correccion').map(e => [date(e.day),esc(e.name),
       esc(e.kind === 'suelto' ? 'EP' : e.concept)+(e.status === 'void' ? ' · Anulada' : e.status === 'custom' ? ' · Ajustada' : '')+
         (e.note ? '<br><small>'+esc(e.note)+'</small>' : ''),money(e.pay),
       locked ? '' : e.kind === 'suelto' ? action('edit','sueltos',e.id,'Editar')+action('remove','sueltos',e.id,'Eliminar') :
         action('edit','ajustesPrimas',e.id,'Editar prima')]),
     'Sin primas por fidelidad ni EP en este mes.');
+}
+
+function correctionSources(trainer,month,editingId) {
+  const existing = (state.correccionesNomina || []).filter(c => c.trainer === trainer && c.id !== editingId);
+  return (state.cierres || []).filter(c => c.trainer === trainer && c.month < month)
+    .sort((a,b) => b.month.localeCompare(a.month))
+    .flatMap(c => {
+      const packages = c.rows.map(({m,count,unitRate,pay}) => ({
+        key:'paquete:'+m.id,name:m.name,label:packageName(m),count,unitRate,pay
+      }));
+      const singles = (c.extras || []).filter(e => e.kind === 'suelto').map(e => ({
+        key:'ep:'+e.id,name:e.name,label:'EP · '+date(e.day),count:1,unitRate:e.pay,pay:e.pay
+      }));
+      return [...packages,...singles].flatMap(row => {
+        const used = existing.filter(e => e.sourceMonth === c.month && e.sourceKey === row.key);
+        const remaining = Math.floor(row.count - used.reduce((sum,e) => sum+e.count,0));
+        if (remaining < 1 || !Number.isFinite(row.unitRate)) return [];
+        return [{...row,month:c.month,value:c.month+'|'+row.key,remaining,
+          remainingPay:Math.max(0,row.pay+payTotal(used))}];
+      }).sort((a,b) => a.name.localeCompare(b.name,'es') || a.label.localeCompare(b.label,'es'));
+    });
+}
+
+function correctionTable(extras,locked) {
+  return table('Correcciones de meses anteriores',['Mes de origen','Socio','Modalidad','Entrenamientos a descontar','Importe','Nota',''],
+    extras.filter(e => e.kind === 'correccion').map(e => [
+      esc(e.sourceMonth),esc(e.name),esc(e.label),fmt.format(e.count),money(e.pay),esc(e.note || '—'),
+      locked ? '' : action('edit','correccionesNomina',e.id,'Editar')+action('remove','correccionesNomina',e.id,'Eliminar')
+    ]),'No hay correcciones en este mes.');
 }
 
 function ratesFor(month) {
@@ -276,6 +307,7 @@ function render() {
     state.socios.some(m => m.trainer === t.id && m.start <= monthEnd && (!m.end || m.end >= monthStart)) ||
     state.ausencias.some(a => a.trainer === t.id && a.start <= monthEnd && a.end >= monthStart) ||
     (state.sueltos || []).some(s => s.trainer === t.id && s.day.startsWith(currentMonth)) ||
+    state.correccionesNomina?.some(c => c.trainer === t.id && c.month === currentMonth) ||
     state.cierres?.some(c => c.trainer === t.id && c.month === currentMonth));
   const selected = $('trainer').value;
   $('trainer').value = visibleTrainers.some(t => t.id === selected) ? selected : (visibleTrainers[0]?.id || '');
@@ -336,7 +368,10 @@ function render() {
         details,'No hay socios asignados para este mes.',true)+
       (!selectedClosure && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
         '<div class="sectionHead">'+action('add','sueltos','','Añadir EP')+'</div>' : '')+
-      extraTable(extras,!!selectedClosure);
+      extraTable(extras,!!selectedClosure)+
+      correctionTable(extras,!!selectedClosure)+
+      (!selectedClosure && correctionSources($('trainer').value,month).length ?
+        '<div class="sectionHead">'+action('add','correccionesNomina','','Añadir corrección')+'</div>' : '');
   }
   if (page === 'socios') {
     const today = day();
@@ -444,8 +479,20 @@ function openEditor(kind, id, intent) {
       table('Desglose',['Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes'],
         rows.map(({m,count,unitRate,pay}) => [esc(m.name),packageName(m),
           fmt.format(count),hourlyMoney(unitRate),money(pay)]),'El entrenador no tiene paquetes en este mes.')+
-      extraTable(extras,true)+
-      (closure ? '' : '<p>El cierre guardará estos importes y el desglose del mes.</p>')+'</div>';
+      extraTable(extras,true)+correctionTable(extras,true)+
+      (closure ? '' : '<p>El cierre guarda el importe para nómina, incluidas las sesiones previstas hasta final de mes. Si alguna no se realiza, puedes descontarla en el mes siguiente con «Añadir corrección».</p>')+'</div>';
+  }
+  if (kind === 'correccionesNomina') {
+    const sources = correctionSources(t,chosenMonth,id);
+    if (!sources.length || closedMonth(t,chosenMonth)) return;
+    editor.trainer = t;
+    $('editorTitle').textContent = id ? 'Editar corrección de nómina' : 'Corregir un mes anterior';
+    const selected = data.sourceMonth ? data.sourceMonth+'|'+data.sourceKey : undefined;
+    fields = '<p class="wide">El descuento se aplica en '+esc(chosenMonth)+' con la comisión que se usó en el mes de origen.</p>'+
+      select('Entrenamiento del mes de origen','source',sources.map(row => [row.value,row.month+' · '+row.name+' · '+row.label]),selected)+
+      input('Entrenamientos que no se hicieron','count',data.count ?? 1,'number','required min="1" step="1"')+
+      '<p class="wide" id="correctionPreview" aria-live="polite"></p>'+
+      input('Nota (opcional)','note',data.note,'text','maxlength="250"');
   }
   if (kind === 'sueltos') {
     $('editorTitle').textContent = id ? 'Editar EP' : 'Añadir EP';
@@ -506,6 +553,7 @@ function openEditor(kind, id, intent) {
   $('fields').innerHTML = fields;
   if (kind === 'ausencias') showPartial();
   if (kind === 'ajustesPrimas') showBonusPay();
+  if (kind === 'correccionesNomina') showCorrectionPreview();
   $('editor').showModal();
 }
 
@@ -597,6 +645,21 @@ function showBonusPay() {
   fields.bonusPay.closest('label').hidden = !custom;
 }
 
+function correctionPay(source,count) {
+  if (count === source.remaining && Number.isInteger(source.count)) return -source.remainingPay;
+  return -Math.min(source.remainingPay,Math.round(source.unitRate*count));
+}
+
+function showCorrectionPreview() {
+  const fields = $('recordForm').elements;
+  const source = correctionSources(editor.trainer,editor.month,editor.id).find(row => row.value === fields.source.value);
+  if (!source) return;
+  fields.count.max = source.remaining;
+  const count = fields.count.valueAsNumber;
+  $('correctionPreview').textContent = 'Disponibles para corregir: '+source.remaining+' · Comisión original: '+hourlyMoney(source.unitRate)+
+    (Number.isInteger(count) && count >= 1 && count <= source.remaining ? ' · Descuento: '+money(correctionPay(source,count)) : '');
+}
+
 function change(form) {
   const {kind,id,intent,data,month} = editor;
   const next = structuredClone(state);
@@ -633,6 +696,18 @@ function change(form) {
     }));
     next.cierres = [...(next.cierres || []),{month,trainer:id,trainerName:nameOf(id),rows,extras:extrasFor(id,month)}];
     return next;
+  }
+  if (kind === 'correccionesNomina') {
+    const target = editor.trainer;
+    if (closedMonth(target,month)) throw new Error('Este mes ya está cerrado.');
+    const source = correctionSources(target,month,id).find(row => row.value === value('source'));
+    const count = Number(value('count'));
+    if (!source || !Number.isSafeInteger(count) || count < 1 || count > source.remaining) {
+      throw new Error('Elige un registro de un cierre anterior e indica cuántos entrenamientos quedan por descontar.');
+    }
+    Object.assign(record,{trainer:target,month,sourceMonth:source.month,sourceKey:source.key,
+      name:source.name,label:source.label,count,pay:correctionPay(source,count),note});
+    next.correccionesNomina ??= [];
   }
   if (kind === 'sueltos') {
     if (!trainer || !value('name') || !value('day')) throw new Error('Completa entrenador, socio y fecha.');
@@ -778,8 +853,11 @@ function readBackup(raw) {
   const memberRow = m => string(m.id) && string(m.name) && string(m.trainer) &&
     (m.mode === 'Duo' || m.mode === 'One') && [240,480].includes(m.minutes);
   const rates = value => object(value) && rateKeys.every(key => amount(value[key]));
+  const correctionRow = e => string(e.id) && string(e.trainer) && month(e.month) &&
+    month(e.sourceMonth) && e.sourceMonth < e.month && string(e.sourceKey) && string(e.name) &&
+    string(e.label) && Number.isSafeInteger(e.count) && e.count > 0 && Number.isFinite(e.pay) && e.pay <= 0 && string(e.note);
   const extraRow = e => object(e) && string(e.id) && iso(e.day) && string(e.name) &&
-    string(e.concept) && amount(e.pay) && ['prima','suelto'].includes(e.kind);
+    string(e.concept) && (e.kind === 'correccion' ? correctionRow(e) : amount(e.pay) && ['prima','suelto'].includes(e.kind));
   if (backup?.format !== backupFormat || backup.version !== 1 || !object(data) ||
       !array('equipo',t => string(t.id) && string(t.name) && typeof t.active === 'boolean',true) ||
       !array('socios',m => memberRow(m) && iso(m.start) && (!m.end || iso(m.end)),true) ||
@@ -788,6 +866,7 @@ function readBackup(raw) {
       !array('sesiones',s => Array.isArray(s.members) && s.members.every(string)) ||
       !array('tarifas',t => month(t.month) && rates(t.rates) && optional(t.perHour,v => typeof v === 'boolean')) ||
       !optional(data.tarifasExtra,v => object(v) && rateKeys.every(key => optional(v[key],amount)) && amount(v.single)) ||
+      !array('correccionesNomina',correctionRow) ||
       !array('sueltos',s => string(s.id) && string(s.trainer) && iso(s.day) && string(s.name) && amount(s.pay)) ||
       !array('notasMensuales',n => string(n.member) && month(n.month) && string(n.text)) ||
       !array('ajustesPrimas',a => string(a.member) && string(a.trainer) && month(a.month) && optional(a.pay,amount)) ||
@@ -875,6 +954,9 @@ $('deleteMember').onclick = async () => {
 };
 $('cancel').onclick = $('close').onclick = () => { if (!saving) $('editor').close(); };
 $('editor').addEventListener('cancel', event => { if (saving) event.preventDefault(); });
+$('recordForm').oninput = event => {
+  if (editor.kind === 'correccionesNomina' && ['source','count'].includes(event.target.name)) showCorrectionPreview();
+};
 $('recordForm').onchange = event => {
   const field = event.target.name;
   if (editor.kind === 'ausencias' && field === 'type') showPartial();
@@ -919,6 +1001,10 @@ $('content').onclick = async event => {
     if (kind === 'sueltos') {
       const entry = state.sueltos?.find(s => s.id === id);
       if (!entry || closedMonth(entry.trainer,entry.day.slice(0,7))) return notify('El mes ya está cerrado.');
+    }
+    if (kind === 'correccionesNomina') {
+      const entry = state.correccionesNomina?.find(c => c.id === id);
+      if (!entry || closedMonth(entry.trainer,entry.month)) return notify('El mes ya está cerrado.');
     }
     if (!confirm('¿Eliminar este registro?')) return;
     next[kind] = next[kind].filter(r => r.id !== id);
