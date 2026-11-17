@@ -146,3 +146,7 @@ button.year-person small{font-weight:400}
 .calendar-type{display:inline-flex;align-items:center;gap:7px}
 .calendar-type[aria-pressed="true"]{background:#edf3fc;border-color:#2866c1}
 .calendar-type[aria-pressed="false"]{opacity:.5}
+
+.metric-package{position:relative;padding-right:88px}
+.metric-package-detail{position:absolute;right:16px;top:50%;transform:translateY(-50%);display:grid;gap:7px;font-size:12px;white-space:nowrap}
+.metric-package-detail b{color:var(--ink)}

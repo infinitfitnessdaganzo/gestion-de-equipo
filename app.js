@@ -339,15 +339,20 @@ function trainingMetrics(monthly, extras) {
   const people = rows => new Set(rows.map(({m}) => identity(m.name,m.code)));
   const all = people(active);
   extras.filter(e => e.kind === 'suelto').forEach(e => all.add(identity(e.name)));
-  const group = (label, rows, count) => {
+  const group = (label, rows, count, breakdown = false) => {
     const workedHours = rows.reduce((sum,row) => sum + row.count,0);
-    return metric(label,fmt.format(count),fmt.format(workedHours)+(workedHours === 1 ? ' hora' : ' horas'));
+    const card = metric(label,fmt.format(count),fmt.format(workedHours)+(workedHours === 1 ? ' hora' : ' horas'));
+    if (!breakdown) return card;
+    const count1H = people(rows.filter(row => row.m.minutes !== 480)).size;
+    const count2H = people(rows.filter(row => row.m.minutes === 480)).size;
+    return card.replace('class="metric"','class="metric metric-package"').replace(/<\/div>$/,
+      '<div class="metric-package-detail"><span>1H: <b>'+fmt.format(count1H)+'</b></span><span>2H: <b>'+fmt.format(count2H)+'</b></span></div></div>');
   };
   const duo = active.filter(row => row.m.mode === 'Duo');
   const one = active.filter(row => row.m.mode === 'One');
   return group('Personas entrenadas',active,all.size)+
-    group('Personas en Duo',duo,people(duo).size)+
-    group('Personas en One',one,people(one).size);
+    group('Personas en Duo',duo,people(duo).size,true)+
+    group('Personas en One',one,people(one).size,true);
 }
 
 function noteButton(id,month) {
