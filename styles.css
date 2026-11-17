@@ -87,3 +87,30 @@ footer{justify-content:flex-end}
 #recordForm .danger-button{margin-inline-end:auto;color:#263645;border-color:#8d9caf}
 
 .header-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+.month-close-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;margin-top:14px}
+.month-close-actions span{color:var(--muted);font-size:13px}
+.month-close-actions [data-act="closeMonth"]{padding:10px 18px;background:var(--accent,#1d4ed8);color:#fff;border-color:transparent}
+.month-close-actions .pdf-icon{font-size:18px;padding:6px 10px}
+.month-close-actions .pdf-icon span{font-size:inherit}
+dialog.payroll-dialog{width:min(1080px,calc(100% - 24px))}
+.payroll-dialog .compact-packages{min-width:0}
+.payroll-dialog .compact-packages table{table-layout:fixed}
+.report-brand{color:var(--muted);font-size:13px}
+@media print{
+  @page{size:A4;margin:13mm}
+  body:has(dialog.payroll-dialog[open]){display:block;background:white}
+  body:has(dialog.payroll-dialog[open]) > :not(#editor){display:none!important}
+  dialog.payroll-dialog[open]{position:static;display:block;width:100%;max-width:none;max-height:none;margin:0;padding:0;border:0;overflow:visible;color:#111}
+  dialog.payroll-dialog::backdrop{background:transparent}
+  .payroll-dialog #close,.payroll-dialog footer,.payroll-dialog #formError{display:none!important}
+  .payroll-dialog #fields{display:block;margin:8px 0}
+  .payroll-dialog .panel{break-inside:auto;margin:12px 0}
+  .payroll-dialog .sectionHead{padding:8px 6px;break-after:avoid}
+  .payroll-dialog .compact-packages table{display:table;width:100%;font-size:9pt;white-space:normal}
+  .payroll-dialog .compact-packages thead{display:table-header-group;position:static;width:auto;height:auto;overflow:visible;clip-path:none}
+  .payroll-dialog .compact-packages tbody{display:table-row-group}
+  .payroll-dialog .compact-packages tr{display:table-row;break-inside:avoid}
+  .payroll-dialog .compact-packages :is(th,td){display:table-cell;padding:4px;overflow-wrap:anywhere;border-bottom:1px solid #ddd}
+  .payroll-dialog .package-cell-label{display:none!important}
+}

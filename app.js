@@ -190,14 +190,14 @@ function extrasFor(trainer,month) {
 
 const payTotal = rows => rows.reduce((total,row) => total + (row.pay ?? 0),0);
 
-function extraTable(extras,locked) {
+function extraTable(extras,locked,compact = false) {
   return table('Primas por fidelidad y EP',['Fecha','Socio','Concepto','Importe',''],
     extras.filter(e => e.kind !== 'correccion').map(e => [date(e.day),esc(e.name),
       esc(e.kind === 'suelto' ? 'EP' : e.concept)+(e.status === 'void' ? ' · Anulada' : e.status === 'custom' ? ' · Ajustada' : '')+
         (e.note ? '<br><small>'+esc(e.note)+'</small>' : ''),money(e.pay),
       locked ? '' : e.kind === 'suelto' ? action('edit','sueltos',e.id,'Editar')+action('remove','sueltos',e.id,'Eliminar') :
         action('edit','ajustesPrimas',e.id,'Editar prima')]),
-    'Sin primas por fidelidad ni EP en este mes.');
+    'Sin primas por fidelidad ni EP en este mes.',compact);
 }
 
 function correctionSources(trainer,month,editingId,includeUnavailable = false) {
@@ -223,13 +223,13 @@ function correctionSources(trainer,month,editingId,includeUnavailable = false) {
     });
 }
 
-function correctionTable(extras,locked) {
+function correctionTable(extras,locked,compact = false) {
   return table('Correcciones de meses anteriores',['Mes de origen','Socio','Modalidad','Sesiones al cerrar','Sesiones reales','Diferencia','Importe','Nota',''],
     extras.filter(e => e.kind === 'correccion').map(e => [
       esc(e.sourceMonth),esc(e.name),esc(e.label),e.originalCount == null ? '—' : fmt.format(e.originalCount),
       e.actualCount == null ? '—' : fmt.format(e.actualCount),signedCount(-e.count),money(e.pay),esc(e.note || '—'),
       locked ? '' : action('edit','correccionesNomina',e.id,'Editar')+action('remove','correccionesNomina',e.id,'Eliminar')
-    ]),'No hay correcciones en este mes.');
+    ]),'No hay correcciones en este mes.',compact);
 }
 
 const signedCount = n => (n > 0 ? '+' : '')+fmt.format(n);
@@ -371,10 +371,13 @@ function render() {
       return [esc(closure?.trainerName || t.name),
         ...packages.map(p => fmt.format(sum(rows.filter(row => packageName(row.m) === p)))),
         fmt.format(singles),'<strong>'+fmt.format(sum(rows)+singles)+'</strong>', '<strong>'+((closure ? !closure.ratesMissing && rows.every(r => r.pay != null) : ratesReady) ? money(payTotal(rows)+extraPay) : '—')+'</strong>',
-        closure ? 'Cerrado' : externalClose(t.id,month) ? 'Cerrado fuera de la app' : 'Abierto',
-        closedMonth(t.id,month) ? action('report','cierres',t.id,'Ver cierre') :
-          (ratesReady || month < firstManagedMonth ? action('closeMonth','cierres',t.id,'Cerrar mes') : 'Configura las comisiones')];
+        closure ? 'Cerrado' : externalClose(t.id,month) ? 'Cerrado fuera de la app' : 'Abierto'];
     });
+    const closeActions = selectedTrainer ? '<div class="month-close-actions"><span>'+esc(monthName(month))+' '+esc(month.slice(0,4))+'</span>'+
+      (lockedMonth ? action('report','cierres',selectedTrainer.id,'Ver cierre') :
+        (ratesReady || month < firstManagedMonth ? action('closeMonth','cierres',selectedTrainer.id,'Cerrar mes') : '<small>Configura las comisiones</small>'))+
+      (selectedClosure ? '<button type="button" class="pdf-icon" data-act="pdf" data-kind="cierres" data-id="'+esc(selectedTrainer.id)+
+        '" title="Informe del cierre (PDF)" aria-label="Informe del cierre (PDF)"><span aria-hidden="true">📄</span></button>' : '')+'</div>' : '';
     const monthStart = new Date(month+'-01T00:00:00Z');
     monthStart.setUTCMonth(monthStart.getUTCMonth()-1);
     const previousMonth = monthStart.toISOString().slice(0,7);
@@ -388,7 +391,7 @@ function render() {
     $('content').innerHTML = '<div class="metrics">'+
       trainingMetrics(monthly,extras)+
       metric('Total para nómina',(selectedClosure ? !selectedClosure.ratesMissing && monthly.every(r => r.pay != null) : ratesReady) ? money(payTotal(monthly)+extraPay) : '—')+
-      '</div>'+table(trainingTitle,['Entrenador',...packages,'EP','Total entrenamientos','Total para nómina','Estado',''],totals,
+      '</div>'+closeActions+table(trainingTitle,['Entrenador',...packages,'EP','Total entrenamientos','Total para nómina','Estado'],totals,
         'No hay entrenadores para esta selección.')+
       table('Socios entrenados en '+monthName(month),
         ['N.º socio','Socio','Paquete','Entrenamientos realizados','Mes anterior · '+monthName(previousMonth),'Comisión por hora','Comisión del mes','Nota',''],
@@ -478,10 +481,12 @@ function openEditor(kind, id, intent) {
   $('editorTitle').textContent = intent === 'rates' ? 'Comisiones por entrenamiento' : intent === 'close' ? 'Finalizar asignación' : intent === 'adjust' ? 'Entrenamientos realizados en el mes' :
     (id ? 'Editar registro' : actions[kind]);
   $('formError').hidden = true;
-  $('save').hidden = false;
+  $('editor').classList.toggle('payroll-dialog',kind === 'cierres');
+  $('printClosure').hidden = true;
+  $('save').hidden = intent === 'pdf';
   $('deleteMember').hidden = kind !== 'socios' || intent !== 'edit' || !data.id;
   $('save').textContent = intent === 'report' ? 'Reabrir mes' : intent === 'closeMonth' ? 'Confirmar cierre' : 'Guardar';
-  $('cancel').textContent = intent === 'report' ? 'Cerrar' : 'Cancelar';
+  $('cancel').textContent = intent === 'report' || intent === 'pdf' ? 'Cerrar' : 'Cancelar';
   let fields = '';
   if (kind === 'ajustesPrimas') {
     const entry = bonusEntries(t,chosenMonth).find(e => e.id === id);
@@ -498,19 +503,21 @@ function openEditor(kind, id, intent) {
   }
   if (kind === 'cierres') {
     const closure = state.cierres?.find(c => c.trainer === id && c.month === chosenMonth);
+    if (intent === 'pdf' && !closure) return;
+    $('printClosure').hidden = !closure;
     const rows = closure?.rows ?? closingRows(id,chosenMonth);
     const extras = closure ? (closure.extras || []) : extrasFor(id,chosenMonth);
     const historical = !closure && externalClose(id,chosenMonth);
     const hasAmount = (closure ? !closure.ratesMissing : !!ratesFor(chosenMonth)) && rows.every(r => r.pay != null);
-    $('editorTitle').textContent = (closure || historical ? 'Cierre de ' : 'Cerrar mes de ')+(closure?.trainerName || nameOf(id));
-    fields = '<div class="wide"><p>'+esc(chosenMonth)+' · <strong>'+
+    $('editorTitle').textContent = (intent === 'pdf' ? 'Informe de ' : closure || historical ? 'Cierre de ' : 'Cerrar mes de ')+(closure?.trainerName || nameOf(id));
+    fields = '<div class="wide"><p class="report-brand">Infinit Fitness Daganzo</p><p>'+esc(monthName(chosenMonth))+' '+esc(chosenMonth.slice(0,4))+' · <strong>'+
       (hasAmount ? money(payTotal(rows)+payTotal(extras)) : 'Importe pendiente')+'</strong></p>'+
       (historical ? '<p>Mes cerrado fuera de la app. El desglose se basa en los datos actuales.</p>' : '')+
       (!hasAmount && !closure && !historical ? '<p>Se guardarán las sesiones. Puedes configurar las comisiones de este mes en Opciones.</p>' : '')+
       table('Desglose',['Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes'],
         rows.map(({m,count,unitRate,pay}) => [esc(m.name),packageName(m),
-          fmt.format(count),unitRate == null ? '—' : hourlyMoney(unitRate),pay == null ? '—' : money(pay)]),'El entrenador no tiene paquetes en este mes.')+
-      extraTable(extras,true)+correctionTable(extras,true)+
+          fmt.format(count),unitRate == null ? '—' : hourlyMoney(unitRate),pay == null ? '—' : money(pay)]),'El entrenador no tiene paquetes en este mes.',true)+
+      extraTable(extras,true,true)+correctionTable(extras,true,true)+
       (closure || historical || !hasAmount ? '' : '<p>El cierre guarda el importe para nómina, incluidas las sesiones previstas hasta final de mes. Si el número real cambia, puedes regularizarlo en el mes siguiente con «Añadir corrección».</p>')+'</div>';
   }
   if (kind === 'correccionesNomina') {
@@ -1003,6 +1010,11 @@ $('deleteMember').onclick = async () => {
     updateHistoryButtons();
   }
 };
+$('printClosure').onclick = () => {
+  const originalTitle = document.title;
+  document.title = 'Cierre '+editor.month+' - '+$('editorTitle').textContent;
+  try { window.print(); } finally { document.title = originalTitle; }
+};
 $('cancel').onclick = $('close').onclick = () => { if (!saving) $('editor').close(); };
 $('editor').addEventListener('cancel', event => { if (saving) event.preventDefault(); });
 $('recordForm').oninput = event => {
@@ -1015,7 +1027,7 @@ $('recordForm').onchange = event => {
 };
 $('recordForm').onsubmit = async event => {
   event.preventDefault();
-  if (saving) return;
+  if (saving || editor.intent === 'pdf') return;
   if (editor.kind === 'cierres' && editor.intent === 'report') {
     const hasLaterCorrections = state.correccionesNomina?.some(c =>
       c.trainer === editor.id && c.sourceMonth === editor.month);
