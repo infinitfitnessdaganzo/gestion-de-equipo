@@ -134,3 +134,8 @@ dialog.payroll-dialog{width:min(1080px,calc(100% - 24px))}
 
 .annual-day.vacation-mark{background:var(--person-color);color:white}
 .annual-day:is(.absence-mark,.half-mark)>span{background:#fff;border-radius:2px;padding:0 2px}
+
+button.year-person{text-align:left;padding:8px 10px;background:#fff}
+button.year-person[aria-pressed="true"]{border-color:var(--person-color,#2866c1);background:#edf3fc}
+button.year-person[aria-pressed="false"]{opacity:.5}
+button.year-person small{font-weight:400}
