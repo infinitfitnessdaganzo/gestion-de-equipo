@@ -361,7 +361,7 @@ function vacationBalance(person,year) {
   const enjoyed = [...days].filter(([date]) => date <= today).reduce((sum,[,count]) => sum+count,0);
   const scheduled = [...days].filter(([date]) => date > today).reduce((sum,[,count]) => sum+count,0);
   const allowance = person.vacationAllowances?.[year] ?? 23;
-  return {allowance,enjoyed,scheduled,remaining:Math.max(0,allowance-enjoyed)};
+  return {allowance,enjoyed,scheduled,remaining:Math.max(0,allowance-enjoyed-scheduled)};
 }
 
 function annualVacationCalendar(year) {
@@ -394,7 +394,7 @@ function annualVacationCalendar(year) {
     const outside = [...days].filter(([date]) => !date.startsWith(String(year))).reduce((sum,[,count]) => sum+count,0);
     const {allowance,remaining} = vacationBalance(person,year);
     return '<button type="button" class="year-person" data-calendar-person="'+esc(person.id)+'" aria-pressed="'+!hiddenCalendarPeople.has(person.id)+'"><span class="vacation-swatch" style="--person-color:'+colorOf.get(person.id)+'"></span>'+
-      '<div><strong>'+esc(person.name)+'</strong><small>'+fmt.format(used)+' de '+fmt.format(allowance)+' días cargados · '+fmt.format(remaining)+' por disfrutar'+
+      '<div><strong>'+esc(person.name)+'</strong><small>'+fmt.format(used)+' de '+fmt.format(allowance)+' días cargados · '+fmt.format(remaining)+' por solicitar'+
       (outside ? ' · '+fmt.format(outside)+' en otro año natural' : '')+'</small></div></button>';
   }).join('');
   const selected = entry => !hiddenCalendarPeople.has(entry.trainer) &&
@@ -600,7 +600,7 @@ function render() {
     const selectedPerson = state.equipo.find(p => p.id === $('trainer').value);
     const balance = selectedPerson ? vacationBalance(selectedPerson,year) : {allowance:0,enjoyed:0,scheduled:0,remaining:0};
     $('content').innerHTML = '<div class="metrics">'+
-      metric('Vacaciones por disfrutar · '+year,fmt.format(balance.remaining)+' días',
+      metric('Vacaciones por solicitar · '+year,fmt.format(balance.remaining)+' días',
         fmt.format(balance.enjoyed)+' disfrutados de '+fmt.format(balance.allowance)+' · '+fmt.format(balance.scheduled)+' programados')+
       metric('Días de vacaciones · '+monthName(month),fmt.format(daysByType('Vacaciones')),
         'Año vacacional '+year+': '+fmt.format(daysByType('Vacaciones',yearlyVacations,null,null))+' días')+
