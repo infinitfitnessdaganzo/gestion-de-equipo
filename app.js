@@ -325,12 +325,12 @@ function noteButton(id,month) {
 
 function render() {
   const {start:monthStart,end:monthEnd,month:currentMonth} = monthData();
-  const visibleTrainers = state.equipo.filter(t => t.active ||
+  const visibleTrainers = state.equipo.filter(t => (page === 'ausencias' || !t.absenceOnly) && (t.active ||
     state.socios.some(m => m.trainer === t.id && m.start <= monthEnd && (!m.end || m.end >= monthStart)) ||
     state.ausencias.some(a => a.trainer === t.id && a.start <= monthEnd && a.end >= monthStart) ||
     (state.sueltos || []).some(s => s.trainer === t.id && s.day.startsWith(currentMonth)) ||
     state.correccionesNomina?.some(c => c.trainer === t.id && c.month === currentMonth) ||
-    state.cierres?.some(c => c.trainer === t.id && c.month === currentMonth));
+    state.cierres?.some(c => c.trainer === t.id && c.month === currentMonth)));
   const selected = $('trainer').value;
   $('trainer').value = visibleTrainers.some(t => t.id === selected) ? selected : (visibleTrainers[0]?.id || '');
   $('trainerButtons').innerHTML = visibleTrainers.map(t =>
@@ -416,22 +416,23 @@ function render() {
   }
   if (page === 'ausencias') {
     const daysByType = type => {
-      const keys = new Set();
-      for (const a of absences.filter(a => a.type === type)) {
+      const days = new Map();
+      for (const a of absences.filter(a => a.type === type || (type === 'Vacaciones' && a.type === halfVacation))) {
         const cursor = new Date(a.start < start ? start : a.start);
         const last = a.end > end ? end : a.end;
         while (cursor.toISOString().slice(0,10) <= last) {
-          keys.add(a.trainer + cursor.toISOString().slice(0,10));
+          const key = a.trainer + cursor.toISOString().slice(0,10);
+          days.set(key,Math.min(1,(days.get(key) || 0)+(a.type === halfVacation ? 0.5 : 1)));
           cursor.setUTCDate(cursor.getUTCDate()+1);
         }
       }
-      return keys.size;
+      return [...days.values()].reduce((sum,count) => sum+count,0);
     };
     $('content').innerHTML = '<div class="metrics">'+
-      metric('Días naturales de vacaciones',daysByType('Vacaciones'))+
+      metric('Días de vacaciones',fmt.format(daysByType('Vacaciones')))+
       metric('Días de ausencia completa',daysByType('Ausencia completa'))+
       metric('Horas de ausencia parcial',hours(total(absences.filter(a => a.type === 'Ausencia parcial'))))+'</div>'+
-      table('Registro del mes',['Entrenador','Tipo','Desde','Hasta','Duración parcial','Nota',''],
+      table('Registro del mes',['Persona','Tipo','Desde','Hasta','Duración parcial','Nota',''],
         absences.sort((a,b) => b.start.localeCompare(a.start)).map(a => [esc(nameOf(a.trainer)),esc(a.type),date(a.start),date(a.end),
           a.minutes ? hours(a.minutes) : '—',esc(a.note || '—'),
           action('edit','ausencias',a.id,'Editar')+action('remove','ausencias',a.id,'Eliminar')]),
@@ -468,15 +469,16 @@ function select(label, key, values, selected, attrs = 'required') {
   return '<label>'+label+'<select name="'+key+'" '+attrs+'>'+values.map(([id,text]) => option(id,text,selected)).join('')+'</select></label>';
 }
 const packageOptions = packages.map(p => [p,p+' · '+(p.endsWith('2H') ? 8 : 4)+' entrenamientos al mes']);
-const absenceOptions = ['Vacaciones','Ausencia completa','Ausencia parcial'].map(v => [v,v]);
+const halfVacation = 'Medio día de vacaciones';
+const absenceOptions = ['Vacaciones',halfVacation,'Ausencia completa','Ausencia parcial'].map(v => [v,v]);
 
 function openEditor(kind, id, intent) {
   const data = state[kind]?.find?.(r => r.id === id) || {};
   const t = $('trainer').value;
   const chosenMonth = $('month').value || day().slice(0,7);
   const defaultDay = day().startsWith(chosenMonth) ? day() : chosenMonth+'-01';
-  const trainers = state.equipo.filter(r => r.active || r.id === data.trainer).map(r => [r.id,r.name]);
-  const trainer = select('Entrenador','trainer',trainers,data.trainer || t);
+  const trainers = state.equipo.filter(r => (kind === 'ausencias' || !r.absenceOnly) && (r.active || r.id === data.trainer)).map(r => [r.id,r.name]);
+  const trainer = select(kind === 'ausencias' ? 'Persona' : 'Entrenador','trainer',trainers,data.trainer || t);
   editor = {kind,id,intent,data,month:chosenMonth};
   $('editorTitle').textContent = intent === 'rates' ? 'Comisiones por entrenamiento' : intent === 'close' ? 'Finalizar asignación' : intent === 'adjust' ? 'Entrenamientos realizados en el mes' :
     (id ? 'Editar registro' : actions[kind]);
@@ -603,8 +605,9 @@ function showPartial() {
   const partial = e.type.value === 'Ausencia parcial';
   e.minutes.disabled = !partial;
   e.minutes.closest('label').hidden = !partial;
-  e.end.disabled = partial;
-  e.end.closest('label').hidden = partial;
+  const oneDay = partial || e.type.value === halfVacation;
+  e.end.disabled = oneDay;
+  e.end.closest('label').hidden = oneDay;
 }
 
 function updateHistoryButtons() {
@@ -795,6 +798,7 @@ function change(form) {
   if (kind === 'equipo') {
     if (!value('name')) throw new Error('Introduce el nombre del entrenador.');
     Object.assign(record,{name:value('name'),active:data.active ?? true});
+    if (data.absenceOnly) record.absenceOnly = true;
   }
   if (kind === 'socios' && intent === 'switch') {
     const start = value('start');
@@ -849,7 +853,7 @@ function change(form) {
     if (!trainer) throw new Error('Selecciona un entrenador.');
     const type = value('type'), start = value('start');
     const partial = type === 'Ausencia parcial';
-    Object.assign(record,{trainer,note,type,start,end:partial ? start : value('end'),minutes:partial ? Number(value('minutes')) : 0});
+    Object.assign(record,{trainer,note,type,start,end:partial || type === halfVacation ? start : value('end'),minutes:partial ? Number(value('minutes')) : 0});
     if (record.end < start) throw new Error('La fecha final debe ser igual o posterior a la inicial.');
   }
   if (kind === 'notasMensuales') {
