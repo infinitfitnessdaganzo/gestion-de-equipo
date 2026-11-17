@@ -114,3 +114,23 @@ dialog.payroll-dialog{width:min(1080px,calc(100% - 24px))}
   .payroll-dialog .compact-packages :is(th,td){display:table-cell;padding:4px;overflow-wrap:anywhere;border-bottom:1px solid #ddd}
   .payroll-dialog .package-cell-label{display:none!important}
 }
+
+.annual-calendar .sectionHead input{width:104px}
+.annual-legend,.annual-key{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 18px 12px}
+.annual-legend{gap:16px}
+.year-person{display:flex;align-items:center;gap:7px}
+.year-person small{display:block;color:var(--muted)}
+.vacation-swatch{display:inline-block;background:var(--person-color,#2866c1);width:13px;height:7px;border-radius:2px;flex:none}
+.half-mark{background:linear-gradient(90deg,var(--person-color,#2866c1) 50%,#e0e8f5 50%)}
+.absence-mark{background:repeating-linear-gradient(135deg,var(--person-color,#2866c1) 0 2px,#fff 2px 4px);outline:1px solid var(--person-color,#2866c1);outline-offset:-1px}
+.annual-months{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(205px,100%),1fr));gap:10px;padding:8px 18px 18px}
+.annual-month{border:1px solid var(--line);border-radius:9px;padding:7px;min-width:0}
+.annual-month h3{margin:0 0 5px;text-transform:capitalize;font-size:14px}
+.annual-days{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;text-align:center;font-size:11px}
+.cal-weekday{font-weight:700;color:var(--muted)}
+.annual-day{min-height:24px;background:#f4f7fb;border-radius:3px}
+.annual-marks{display:flex;gap:2px;justify-content:center;flex-wrap:wrap;padding:0 2px 2px}
+.annual-marks .vacation-swatch{width:8px;height:4px}
+
+.annual-day.vacation-mark{background:var(--person-color);color:white}
+.annual-day:is(.absence-mark,.half-mark)>span{background:#fff;border-radius:2px;padding:0 2px}

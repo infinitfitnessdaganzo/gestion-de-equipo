@@ -24,6 +24,7 @@ let revision;
 let user;
 let editor;
 let saving = false;
+let vacationCalendarYear;
 const undoHistory = [];
 const redoHistory = [];
 let memberSort = {key:'name', direction:1};
@@ -323,6 +324,85 @@ function noteButton(id,month) {
     '" aria-label="'+label+'" title="'+label+'"><span aria-hidden="true">'+icon+'</span></button>';
 }
 
+function isVacation(type) {
+  return type === 'Vacaciones' || type === halfVacation;
+}
+
+function vacationYear(entry) {
+  return entry.vacationYear ?? Number(entry.start.slice(0,4));
+}
+
+function datesIn(start,end) {
+  const days = [];
+  const cursor = new Date(start+'T00:00:00Z');
+  while (cursor.toISOString().slice(0,10) <= end) {
+    days.push(cursor.toISOString().slice(0,10));
+    cursor.setUTCDate(cursor.getUTCDate()+1);
+  }
+  return days;
+}
+
+function annualVacationCalendar(year) {
+  const people = state.equipo.filter(t => t.active || state.ausencias.some(a =>
+    a.trainer === t.id && (a.start.slice(0,4) <= String(year) && a.end.slice(0,4) >= String(year) ||
+      isVacation(a.type) && vacationYear(a) === year)));
+  const colors = ['#2866c1','#168054','#9b4db8','#b95b19','#a83c5c','#087d90'];
+  const colorOf = new Map(people.map((person,index) => [person.id, colors[index % colors.length]]));
+  const first = year+'-01-01', last = year+'-12-31';
+  const events = new Map();
+  const yearly = new Map(people.map(person => [person.id,new Map()]));
+  for (const entry of state.ausencias) {
+    if (!colorOf.has(entry.trainer)) continue;
+    if (entry.start <= last && entry.end >= first) {
+      for (const date of datesIn(entry.start < first ? first : entry.start,entry.end > last ? last : entry.end)) {
+        const marks = events.get(date) || new Map();
+        marks.set(entry.trainer+'|'+entry.type,entry);
+        events.set(date,marks);
+      }
+    }
+    if (!isVacation(entry.type) || vacationYear(entry) !== year) continue;
+    const days = yearly.get(entry.trainer);
+    for (const date of datesIn(entry.start,entry.end)) {
+      days.set(date,Math.min(1,(days.get(date) || 0)+(entry.type === halfVacation ? 0.5 : 1)));
+    }
+  }
+  const legend = people.map(person => {
+    const days = yearly.get(person.id);
+    const used = [...days.values()].reduce((sum,count) => sum+count,0);
+    const outside = [...days].filter(([date]) => !date.startsWith(String(year))).reduce((sum,[,count]) => sum+count,0);
+    const allowance = person.vacationAllowances?.[year] ?? 23;
+    return '<div class="year-person"><span class="vacation-swatch" style="--person-color:'+colorOf.get(person.id)+'"></span>'+
+      '<div><strong>'+esc(person.name)+'</strong><small>'+fmt.format(used)+' de '+fmt.format(allowance)+' días cargados'+
+      (outside ? ' · '+fmt.format(outside)+' en otro año natural' : '')+'</small></div></div>';
+  }).join('');
+  const months = Array.from({length:12},(_,i) => {
+    const month = year+'-'+String(i+1).padStart(2,'0');
+    const offset = (new Date(month+'-01T00:00:00Z').getUTCDay()+6)%7;
+    const end = new Date(Date.UTC(year,i+1,0)).toISOString().slice(0,10);
+    const weekdays = ['L','M','X','J','V','S','D'].map(d=>'<span class="cal-weekday">'+d+'</span>').join('');
+    const days = datesIn(month+'-01',end).map(date => {
+      const entries = [...(events.get(date)?.values() || [])];
+      const message = entries.map(e => nameOf(e.trainer)+' · '+e.type+
+        (isVacation(e.type) ? ' (saldo '+vacationYear(e)+')' : '')).join(' | ');
+      const single = entries.length === 1 ? entries[0] : null;
+      const fill = single ? (single.type === halfVacation ? ' half-mark' : isVacation(single.type) ? ' vacation-mark' : ' absence-mark') : '';
+      return '<div class="annual-day'+fill+'"'+(single ? ' style="--person-color:'+colorOf.get(single.trainer)+'"' : '')+(message ? ' title="'+esc(message)+'" aria-label="'+esc(date+': '+message)+'"' : '')+'>'+
+        '<span>'+Number(date.slice(-2))+'</span><div class="annual-marks">'+(single ? [] : entries).map(e => {
+          const style = e.type === halfVacation ? ' half-mark' : isVacation(e.type) ? '' : ' absence-mark';
+          return '<span class="vacation-swatch'+style+'" style="--person-color:'+colorOf.get(e.trainer)+'"></span>';
+        }).join('')+'</div></div>';
+    }).join('');
+    return '<section class="annual-month"><h3>'+esc(monthName(month))+'</h3><div class="annual-days">'+weekdays+
+      '<span class="cal-gap"></span>'.repeat(offset)+days+'</div></section>';
+  }).join('');
+  return '<section class="panel annual-calendar"><div class="sectionHead"><h2>Calendario anual del equipo</h2>'+
+    '<label>Año del calendario<input id="vacationCalendarYear" type="number" min="1900" max="9998" step="1" value="'+year+'"></label></div>'+
+    '<div class="annual-legend">'+legend+'</div>'+
+    '<p class="annual-key"><span class="vacation-swatch"></span> Vacaciones <span class="vacation-swatch half-mark"></span> Medio día '+
+    '<span class="vacation-swatch absence-mark"></span> Ausencia</p>'+
+    '<div class="annual-months">'+months+'</div></section>';
+}
+
 function render() {
   const {start:monthStart,end:monthEnd,month:currentMonth} = monthData();
   const visibleTrainers = state.equipo.filter(t => (page === 'ausencias' || !t.absenceOnly) && (t.active ||
@@ -432,11 +512,12 @@ function render() {
       metric('Días de vacaciones',fmt.format(daysByType('Vacaciones')))+
       metric('Días de ausencia completa',daysByType('Ausencia completa'))+
       metric('Horas de ausencia parcial',hours(total(absences.filter(a => a.type === 'Ausencia parcial'))))+'</div>'+
-      table('Registro del mes',['Persona','Tipo','Desde','Hasta','Duración parcial','Nota',''],
+      table('Registro del mes',['Persona','Tipo','Desde','Hasta','Año de vacaciones','Duración parcial','Nota',''],
         absences.sort((a,b) => b.start.localeCompare(a.start)).map(a => [esc(nameOf(a.trainer)),esc(a.type),date(a.start),date(a.end),
-          a.minutes ? hours(a.minutes) : '—',esc(a.note || '—'),
+          isVacation(a.type) ? fmt.format(vacationYear(a)).replace(/\./g,'') : '—',a.minutes ? hours(a.minutes) : '—',esc(a.note || '—'),
           action('edit','ausencias',a.id,'Editar')+action('remove','ausencias',a.id,'Eliminar')]),
-        'Todavía no hay vacaciones ni ausencias registradas en este mes.');
+        'Todavía no hay vacaciones ni ausencias registradas en este mes.')+
+      annualVacationCalendar(vacationCalendarYear ?? Number(month.slice(0,4)));
   }
   if (page === 'equipo') {
     const rates = ratesFor(month);
@@ -591,6 +672,7 @@ function openEditor(kind, id, intent) {
   }
   if (kind === 'ausencias') fields = trainer+select('Tipo','type',absenceOptions,data.type)+
     input('Desde','start',data.start || defaultDay,'date')+input('Hasta','end',data.end || defaultDay,'date')+
+    input('Año al que se cargan las vacaciones','vacationYear',data.start ? vacationYear(data) : Number(defaultDay.slice(0,4)),'number','required min="1900" max="9998" step="1"')+
     input('Duración parcial (minutos)','minutes',data.minutes || 60,'number','required min="1" max="1439"')+
     input('Nota (opcional)','note',data.note,'text','maxlength="250"');
   $('fields').innerHTML = fields;
@@ -608,6 +690,8 @@ function showPartial() {
   const oneDay = partial || e.type.value === halfVacation;
   e.end.disabled = oneDay;
   e.end.closest('label').hidden = oneDay;
+  e.vacationYear.disabled = !isVacation(e.type.value);
+  e.vacationYear.closest('label').hidden = e.vacationYear.disabled;
 }
 
 function updateHistoryButtons() {
@@ -799,6 +883,7 @@ function change(form) {
     if (!value('name')) throw new Error('Introduce el nombre del entrenador.');
     Object.assign(record,{name:value('name'),active:data.active ?? true});
     if (data.absenceOnly) record.absenceOnly = true;
+    if (data.vacationAllowances) record.vacationAllowances = data.vacationAllowances;
   }
   if (kind === 'socios' && intent === 'switch') {
     const start = value('start');
@@ -855,6 +940,11 @@ function change(form) {
     const partial = type === 'Ausencia parcial';
     Object.assign(record,{trainer,note,type,start,end:partial || type === halfVacation ? start : value('end'),minutes:partial ? Number(value('minutes')) : 0});
     if (record.end < start) throw new Error('La fecha final debe ser igual o posterior a la inicial.');
+    if (isVacation(type)) {
+      const year = Number(value('vacationYear'));
+      if (!Number.isInteger(year) || year < 1900 || year > 9998) throw new Error('Indica un año de vacaciones válido.');
+      record.vacationYear = year;
+    }
   }
   if (kind === 'notasMensuales') {
     next.notasMensuales = (next.notasMensuales || []).filter(n => n.member !== id || n.month !== month);
@@ -1026,7 +1116,14 @@ $('recordForm').oninput = event => {
 };
 $('recordForm').onchange = event => {
   const field = event.target.name;
-  if (editor.kind === 'ausencias' && field === 'type') showPartial();
+  if (editor.kind === 'ausencias') {
+    if (field === 'type') showPartial();
+    if (field === 'vacationYear') editor.vacationYearChanged = true;
+    if (field === 'start' && !editor.vacationYearChanged &&
+        (!editor.data.start || vacationYear(editor.data) === Number(editor.data.start.slice(0,4)))) {
+      $('recordForm').elements.vacationYear.value = event.target.value.slice(0,4);
+    }
+  }
   if (editor.kind === 'ajustesPrimas' && field === 'bonusStatus') showBonusPay();
 };
 $('recordForm').onsubmit = async event => {
@@ -1052,6 +1149,12 @@ $('recordForm').onsubmit = async event => {
 document.querySelector('nav').onclick = event => {
   if (!state || !event.target.dataset.page) return;
   page = event.target.dataset.page;
+  render();
+};
+$('content').onchange = event => {
+  if (event.target.id !== 'vacationCalendarYear') return;
+  const value = event.target.valueAsNumber;
+  if (Number.isInteger(value) && value >= 1900 && value <= 9998) vacationCalendarYear = value;
   render();
 };
 $('content').onclick = async event => {
