@@ -47,9 +47,9 @@ const packages = ['Duo 1H','Duo 2H','One 1H','One 2H'];
 const rateKeys = ['duo1','duo2','one1','one2'];
 const packageName = m => m.mode + (m.minutes === 480 ? ' 2H' : ' 1H');
 const plannedTrainings = m => m.minutes / 60;
-const completedTrainings = (m, adjustment) => adjustment?.count ?? (
+const completedTrainings = (m, adjustment, defaultCount) => adjustment?.count ?? (
   adjustment?.discount != null ? plannedTrainings(m) * (100 - adjustment.discount) / 100 :
-    (adjustment?.minutes ?? m.minutes) / 60
+    adjustment?.minutes == null ? defaultCount : adjustment.minutes / 60
 );
 const hourlyEuro = new Intl.NumberFormat('es-ES',{
   style:'currency',currency:'EUR',maximumFractionDigits:5
@@ -108,8 +108,14 @@ function monthData() {
 }
 
 const epRate = () => state.tarifasExtra?.single ?? 2000;
-const bonusRequirements = '<p>La prima se paga una vez por asignación si el socio sigue activo con ese entrenador y modalidad el día 1 del segundo mes posterior al alta. Por ejemplo, un alta en septiembre genera la prima el 1 de noviembre. Se aplica desde noviembre de 2026.</p>';
+const bonusRequirements = '<p>La prima se paga una vez por asignación si el socio sigue activo con ese entrenador y modalidad el día 1 del segundo mes posterior al alta. Por ejemplo, un alta en septiembre genera la prima el 1 de noviembre. Se aplica desde noviembre de 2026.</p><p>Tras un cambio de modalidad sin interrupción, si ya se pagó una prima, se abona únicamente la diferencia positiva al seguir activo en la nueva modalidad el día 1 del tercer mes, contando el mes del cambio como el primero.</p>';
 const closedMonth = (trainer,month) => state.cierres?.some(c => c.trainer === trainer && c.month === month);
+
+function previousDay(iso) {
+  const date = new Date(iso);
+  date.setUTCDate(date.getUTCDate()-1);
+  return date.toISOString().slice(0,10);
+}
 
 function bonusDay(start) {
   const [year,month] = start.split('-').map(Number);
@@ -126,25 +132,51 @@ function eligibleBonusDay(m) {
   return due.slice(0,7) >= firstBonusMonth && (!m.end || due <= m.end) ? due : null;
 }
 
-function bonusAmount(m) {
-  return m.bonus ?? state.tarifasExtra?.[rateKeys[packages.indexOf(packageName(m))]];
+function bonusDetails(m,due,paidBonuses) {
+  const amount = m.bonus ?? state.tarifasExtra?.[rateKeys[packages.indexOf(packageName(m))]];
+  const lastDay = previousDay(m.start);
+  const firstLink = state.socios.find(p => p.code && p.code === m.code && p.trainer === m.trainer && p.end === lastDay);
+  if (!firstLink) return {amount,concept:'Prima por fidelidad · '+packageName(m)};
+
+  const earlierIds = new Set();
+  let prior = firstLink;
+  while (prior && !earlierIds.has(prior.id)) {
+    earlierIds.add(prior.id);
+    const boundary = previousDay(prior.start);
+    prior = state.socios.find(p => p.code === m.code && p.trainer === m.trainer && p.end === boundary);
+  }
+  const paid = paidBonuses.filter(e => earlierIds.has(e.id) && e.day < due)
+    .reduce((total,e) => total + e.pay,0);
+  if (!paid) return {amount,concept:'Prima por fidelidad · '+packageName(m)};
+  if (packageName(firstLink) === packageName(m) || (amount != null && amount <= paid)) return null;
+  return {
+    amount:amount == null ? null : amount-paid,
+    concept:'Diferencia de prima por fidelidad · '+packageName(m),
+    paid
+  };
 }
 
 const bonusOverride = (id,trainer,month) =>
   state.ajustesPrimas?.find(a => a.member === id && a.trainer === trainer && a.month === month);
 
-function extrasFor(trainer,month) {
-  const recorded = new Set((state.cierres || []).flatMap(c => (c.extras || []).filter(e => e.kind === 'prima').map(e => e.id)));
-  const bonuses = state.socios.filter(m => m.trainer === trainer && !recorded.has(m.id))
+function bonusEntries(trainer,month) {
+  const recorded = (state.cierres || []).flatMap(c => (c.extras || []).filter(e => e.kind === 'prima'));
+  const paid = recorded.filter(e => e.pay > 0 && e.status !== 'void');
+  return state.socios.filter(m => m.trainer === trainer && !recorded.some(e => e.id === m.id))
     .flatMap(m => {
       const due = eligibleBonusDay(m);
       if (!due?.startsWith(month)) return [];
+      const details = bonusDetails(m,due,paid);
+      if (!details) return [];
       const override = bonusOverride(m.id,trainer,month);
-      const pay = override?.pay ?? bonusAmount(m);
-      return pay == null ? [] :
-        [{id:m.id,kind:'prima',day:due,name:m.name,pay,concept:'Prima por fidelidad · '+packageName(m),
-          status:override?.status,note:override?.note}];
+      return [{id:m.id,kind:'prima',day:due,name:m.name,pay:override?.pay ?? details.amount,
+        concept:details.concept,automaticPay:details.amount,paid:details.paid,
+        status:override?.status,note:override?.note}];
     });
+}
+
+function extrasFor(trainer,month) {
+  const bonuses = bonusEntries(trainer,month).filter(e => e.pay != null);
   const singles = (state.sueltos || []).filter(s => s.trainer === trainer && s.day.startsWith(month))
     .map(s => ({...s,kind:'suelto',concept:'EP'}));
   return [...bonuses,...singles].sort((a,b) => a.day.localeCompare(b.day));
@@ -168,13 +200,27 @@ function ratesFor(month) {
   return Object.fromEntries(rateKeys.map((key,i) => [key,entry.rates[key] / (packages[i].endsWith('2H') ? 8 : 4)]));
 }
 
+function defaultTrainingsForMonth(m,month) {
+  const start = month+'-01';
+  const [year,number] = month.split('-').map(Number);
+  const days = new Date(Date.UTC(year,number,0)).getUTCDate();
+  const beginsWithSwitch = m.start.startsWith(month) &&
+    state.socios.some(p => p.id === m.previousAssignment && p.end === previousDay(m.start));
+  const endsWithSwitch = m.end?.startsWith(month) &&
+    state.socios.some(p => p.previousAssignment === m.id && previousDay(p.start) === m.end);
+  if (!beginsWithSwitch && !endsWithSwitch) return plannedTrainings(m);
+  const first = m.start > start ? Number(m.start.slice(8)) : 1;
+  const last = m.end?.startsWith(month) ? Number(m.end.slice(8)) : days;
+  return Math.round(plannedTrainings(m) * (last-first+1)/days);
+}
+
 function monthlyRows(start,end,month,matches) {
   const rates = ratesFor(month);
   return state.socios.filter(m => matches(m) && m.start <= end && (!m.end || m.end >= start))
     .sort((a,b) => nameOf(a.trainer).localeCompare(nameOf(b.trainer),'es') || a.name.localeCompare(b.name,'es'))
     .map(m => {
       const adjustment = state.ajustes.find(a => a.member === m.id && a.month === month);
-      const count = completedTrainings(m, adjustment);
+      const count = completedTrainings(m, adjustment, defaultTrainingsForMonth(m,month));
       const unitRate = rates ? rates[rateKeys[packages.indexOf(packageName(m))]] : null;
       return {m, adjustment, count, unitRate, pay:unitRate == null ? null : Math.round(count * unitRate)};
     });
@@ -298,7 +344,7 @@ function render() {
     const rows = state.socios.slice().sort(compareMembers);
     const display = m => [esc(m.name),esc(m.code || '—'),esc(nameOf(m.trainer)),mode(packageName(m)),fmt.format(m.minutes / 60),
       date(m.start),date(m.end),action('edit','socios',m.id,'Editar')+
-      (!m.end ? action('close','socios',m.id,'Finalizar') : '')];
+      (!m.end ? action('switch','socios',m.id,'Cambiar modalidad')+action('close','socios',m.id,'Finalizar') : '')];
     const columns = [['Nombre del socio','name'],['N.º de socio','code'],['Entrenador','trainer'],'Paquete','Entrenamientos al mes','Desde','Hasta',''];
     $('content').innerHTML = table('Asignaciones',columns,rows.filter(m => !archived(m)).map(display),'Añade una asignación para empezar.')+
       table('Archivados',columns,rows.filter(archived).map(display),'Todavía no hay entrenamientos archivados.');
@@ -376,14 +422,16 @@ function openEditor(kind, id, intent) {
   $('cancel').textContent = intent === 'report' ? 'Cerrar' : 'Cancelar';
   let fields = '';
   if (kind === 'ajustesPrimas') {
-    const m = member(id);
+    const entry = bonusEntries(t,chosenMonth).find(e => e.id === id);
+    if (!entry || entry.pay == null) return;
     const existing = bonusOverride(id,t,chosenMonth);
     editor.trainer = t;
     $('editorTitle').textContent = 'Editar prima por fidelidad';
-    fields = '<p class="wide">'+esc(m.name)+' · '+esc(monthName(chosenMonth))+' '+esc(chosenMonth.slice(0,4))+
-      '<br>Importe automático: '+money(bonusAmount(m))+'</p>'+
+    fields = '<p class="wide">'+esc(entry.name)+' · '+esc(monthName(chosenMonth))+' '+esc(chosenMonth.slice(0,4))+
+      (entry.paid ? '<br>Primas ya pagadas: '+money(entry.paid) : '')+
+      '<br>Importe automático: '+(entry.automaticPay == null ? '—' : money(entry.automaticPay))+'</p>'+
       select('Prima','bonusStatus',[['auto','Importe automático'],['custom','Cambiar importe'],['void','Anular prima']],existing?.status || 'auto')+
-      input('Importe (€)','bonusPay',(existing?.pay ?? bonusAmount(m))/100,'number','required min="0" max="10000" step="0.01"')+
+      input('Importe (€)','bonusPay',entry.pay/100,'number','required min="0" max="10000" step="0.01"')+
       input('Motivo (opcional)','note',existing?.note,'text','maxlength="250"');
   }
   if (kind === 'cierres') {
@@ -427,6 +475,13 @@ function openEditor(kind, id, intent) {
     trainer+select('Paquete','package',packageOptions,data.mode ? packageName(data) : undefined)+
     input('Fecha de inicio','start',data.start || day(),'date')+
     input('Fecha final (opcional)','end',data.end,'date','');
+  if (kind === 'socios' && intent === 'switch') {
+    $('editorTitle').textContent = 'Cambiar modalidad';
+    fields = '<p class="wide">'+esc(data.name)+' · '+esc(packageName(data))+'</p>'+
+      select('Nueva modalidad','package',packageOptions.filter(([p]) => p !== packageName(data)))+
+      input('Primer día en la nueva modalidad','start',day(),'date')+
+      '<p class="wide">La modalidad anterior finaliza el día previo al cambio.</p>';
+  }
   if (kind === 'notasMensuales') {
     const savedRow = state.cierres?.find(c => c.month === chosenMonth && c.trainer === t)?.rows.find(row => row.m.id === id);
     const m = savedRow?.m || member(id);
@@ -437,7 +492,7 @@ function openEditor(kind, id, intent) {
   if (kind === 'ajustes') {
     const m = member(id);
     const prior = state.ajustes.find(a => a.member === id && a.month === chosenMonth);
-    const count = completedTrainings(m,prior);
+    const count = completedTrainings(m,prior,defaultTrainingsForMonth(m,chosenMonth));
     fields = '<p class="wide">'+esc(m.name)+' · '+esc(chosenMonth)+'<br>'+
       packageName(m)+'</p>'+
       input('Entrenamientos realizados','count',count,'number',
@@ -569,7 +624,7 @@ function change(form) {
   if (kind === 'cierres') {
     if (intent !== 'closeMonth' || !ratesFor(month)) throw new Error('Configura las comisiones del mes antes de cerrarlo.');
     if (next.cierres?.some(c => c.month === month && c.trainer === id)) throw new Error('Este mes ya está cerrado.');
-    if (state.socios.some(m => m.trainer === id && eligibleBonusDay(m)?.startsWith(month) && (bonusOverride(m.id,id,month)?.pay ?? bonusAmount(m)) == null)) {
+    if (bonusEntries(id,month).some(e => e.pay == null)) {
       throw new Error('Configura los importes de las primas en Opciones antes de cerrar el mes.');
     }
     const rows = closingRows(id,month).map(({m,adjustment,count,unitRate,pay}) => ({
@@ -609,12 +664,40 @@ function change(form) {
     if (!value('name')) throw new Error('Introduce el nombre del entrenador.');
     Object.assign(record,{name:value('name'),active:data.active ?? true});
   }
+  if (kind === 'socios' && intent === 'switch') {
+    const start = value('start');
+    const selectedPackage = value('package');
+    if (!packages.includes(selectedPackage) || selectedPackage === packageName(data)) {
+      throw new Error('Selecciona otra modalidad.');
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || start <= data.start || data.end) throw new Error('Elige una fecha posterior al inicio de la asignación activa.');
+    if (next.cierres?.some(c => c.trainer === data.trainer && c.month >= start.slice(0,7))) {
+      throw new Error('El cambio afecta a un mes cerrado de este entrenador.');
+    }
+    if (next.sesiones?.some(s => s.members.includes(id) && s.day >= start)) {
+      throw new Error('Elige una fecha posterior a las sesiones ya registradas.');
+    }
+    if (next.socios.some(m => m.id !== id && m.code === data.code && (!m.end || m.end >= start))) {
+      throw new Error('Ya existe una asignación de este socio para esas fechas.');
+    }
+    if (!data.code) throw new Error('Añade el número de socio a su ficha antes de cambiar la modalidad.');
+    next.socios.find(m => m.id === id).end = previousDay(start);
+    next.socios.push({id:crypto.randomUUID(),code:data.code,name:data.name,trainer:data.trainer,
+      mode:selectedPackage.split(' ')[0],minutes:selectedPackage.endsWith('2H') ? 480 : 240,
+      start,end:'',previousAssignment:id});
+    return next;
+  }
   if (kind === 'socios') {
     Object.assign(record,intent === 'close' ? {...data,end:value('end')} : {
       name:value('name'),code:value('code'),trainer,mode:value('package').split(' ')[0],
       minutes:value('package').endsWith('2H') ? 480 : 240,
       start:value('start'),end:value('end')
     });
+    if (data.id && packageName(record) !== packageName(data) &&
+        next.cierres?.some(c => c.extras?.some(e => e.kind === 'prima' && e.id === id && e.pay > 0))) {
+      throw new Error('Usa Cambiar modalidad para conservar la asignación y la prima ya pagada.');
+    }
+    if (data.previousAssignment) record.previousAssignment = data.previousAssignment;
     if (data.bonus != null && record.trainer === data.trainer && record.start === data.start &&
         packageName(record) === packageName(data)) record.bonus = data.bonus;
     if (!record.name) throw new Error('Introduce el nombre del socio.');
@@ -647,12 +730,12 @@ function change(form) {
     const m = member(id);
     const prior = next.ajustes.find(a => a.member === id && a.month === month);
     const count = Number(value('count'));
-    if (value('count') && count === completedTrainings(m,prior)) return next;
+    if (value('count') && count === completedTrainings(m,prior,defaultTrainingsForMonth(m,month))) return next;
     if (!value('count') || !Number.isSafeInteger(count) || count < 0) {
       throw new Error('Introduce un número entero de entrenamientos, a partir de cero.');
     }
     next.ajustes = next.ajustes.filter(a => !(a.member === id && a.month === month));
-    if (count !== plannedTrainings(m)) next.ajustes.push({member:id,month,count});
+    if (count !== defaultTrainingsForMonth(m,month)) next.ajustes.push({member:id,month,count});
     return next;
   }
   const index = next[kind].findIndex(r => r.id === id);
