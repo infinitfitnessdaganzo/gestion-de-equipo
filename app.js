@@ -107,8 +107,8 @@ function monthData() {
   };
 }
 
-const extraKeys = [...rateKeys,'single'];
-const extraLabels = [...packages.map(p => 'Prima '+p),'Entrenamiento suelto'];
+const gpRate = () => state.tarifasExtra?.single ?? 2000;
+const bonusRequirements = '<p>La prima se paga una vez por asignación si el socio sigue activo con ese entrenador y modalidad el día 1 del segundo mes posterior al alta. Por ejemplo, un alta en septiembre genera la prima el 1 de noviembre. Se aplica desde noviembre de 2026.</p>';
 const closedMonth = (trainer,month) => state.cierres?.some(c => c.trainer === trainer && c.month === month);
 
 function bonusDay(start) {
@@ -142,24 +142,24 @@ function extrasFor(trainer,month) {
       const override = bonusOverride(m.id,trainer,month);
       const pay = override?.pay ?? bonusAmount(m);
       return pay == null ? [] :
-        [{id:m.id,kind:'prima',day:due,name:m.name,pay,concept:'Prima '+packageName(m),
+        [{id:m.id,kind:'prima',day:due,name:m.name,pay,concept:'Prima por fidelidad · '+packageName(m),
           status:override?.status,note:override?.note}];
     });
   const singles = (state.sueltos || []).filter(s => s.trainer === trainer && s.day.startsWith(month))
-    .map(s => ({...s,kind:'suelto',concept:'Entrenamiento suelto'}));
+    .map(s => ({...s,kind:'suelto',concept:'GP'}));
   return [...bonuses,...singles].sort((a,b) => a.day.localeCompare(b.day));
 }
 
 const payTotal = rows => rows.reduce((total,row) => total + (row.pay ?? 0),0);
 
 function extraTable(extras,locked) {
-  return table('Primas y entrenamientos sueltos',['Fecha','Socio','Concepto','Importe',''],
+  return table('Primas por fidelidad y GP',['Fecha','Socio','Concepto','Importe',''],
     extras.map(e => [date(e.day),esc(e.name),
-      esc(e.concept)+(e.status === 'void' ? ' · Anulada' : e.status === 'custom' ? ' · Ajustada' : '')+
+      esc(e.kind === 'suelto' ? 'GP' : e.concept)+(e.status === 'void' ? ' · Anulada' : e.status === 'custom' ? ' · Ajustada' : '')+
         (e.note ? '<br><small>'+esc(e.note)+'</small>' : ''),money(e.pay),
       locked ? '' : e.kind === 'suelto' ? action('edit','sueltos',e.id,'Editar')+action('remove','sueltos',e.id,'Eliminar') :
         action('edit','ajustesPrimas',e.id,'Editar prima')]),
-    'Sin primas ni entrenamientos sueltos en este mes.');
+    'Sin primas por fidelidad ni GP en este mes.');
 }
 
 function ratesFor(month) {
@@ -250,6 +250,8 @@ function render() {
   });
   const { start, end, month, absences, matches } = monthData();
   if (page === 'resumen') {
+    const selectedTrainer = state.equipo.find(t => t.id === $('trainer').value);
+    const trainingTitle = selectedTrainer ? 'Entrenamientos de '+esc(selectedTrainer.name) : 'Entrenamientos por entrenador';
     const closed = state.cierres?.filter(c => c.month === month && matches(c)) || [];
     const monthly = monthlyRows(start,end,month,m =>
       matches(m) && !closed.some(c => c.trainer === m.trainer))
@@ -281,13 +283,13 @@ function render() {
     $('content').innerHTML = '<div class="metrics">'+
       trainingMetrics(monthly,extras)+
       metric('Total para nómina',ratesReady || (closed.length && monthly.every(r => r.pay != null)) ? money(payTotal(monthly)+extraPay) : '—')+
-      '</div>'+table('Entrenamientos por entrenador',['Entrenador',...packages,'Sueltos','Total entrenamientos','Total para nómina','Estado',''],totals,
+      '</div>'+table(trainingTitle,['Entrenador',...packages,'GP','Total entrenamientos','Total para nómina','Estado',''],totals,
         'No hay entrenadores para esta selección.')+
       table('Socios entrenados en '+monthName(month),
         ['N.º socio','Socio','Paquete','Entrenamientos realizados','Comisión por hora','Comisión del mes','Nota',''],
         details,'No hay socios asignados para este mes.',true)+
       (!selectedClosure && $('trainer').value && state.equipo.some(t => t.id === $('trainer').value && t.active) ?
-        '<div class="sectionHead">'+action('add','sueltos','','Añadir entrenamiento suelto')+'</div>' : '')+
+        '<div class="sectionHead">'+action('add','sueltos','','Añadir GP')+'</div>' : '')+
       extraTable(extras,!!selectedClosure);
   }
   if (page === 'socios') {
@@ -331,16 +333,17 @@ function render() {
       action('edit','equipo',t.id,'Editar')+action('archive','equipo',t.id,t.active ? 'Archivar' : 'Reactivar')
     ]),'Añade un entrenador para empezar.')+
       '<section class="panel"><div class="sectionHead"><div><h2>Comisiones por entrenamiento</h2><p>'+
-      (rates ? 'Comisiones de '+esc(month)+' · Cada entrenamiento cuenta como una hora.' :
-        'Configura la comisión por hora realizada para cada modalidad.')+'</p></div>'+
-      action('rates','tarifas','',rates ? 'Cambiar comisiones' : 'Configurar comisiones')+'</div>'+
-      (rates ? '<div class="scroll"><table><thead><tr><th>Modalidad</th><th>Comisión por hora</th></tr></thead><tbody>'+
-        packages.map((p,i) => '<tr><td>'+p+'</td><td>'+hourlyMoney(rates[rateKeys[i]])+
-          '</td></tr>').join('')+'</tbody></table></div>' : '')+'</section>'+
-      '<section class="panel"><div class="sectionHead"><div><h2>Primas y entrenamientos sueltos</h2><p>'+
-      (state.tarifasExtra ? extraLabels.map((label,i) => label+' · '+money(state.tarifasExtra[extraKeys[i]])).join(' &nbsp; | &nbsp; ') :
-        'Configura los importes para las primas y los entrenamientos sueltos.')+'</p></div>'+
-      action('rates','tarifasExtra','',state.tarifasExtra ? 'Cambiar importes' : 'Configurar importes')+'</div></section>';
+      'Comisiones de '+esc(month)+' · Cada entrenamiento de paquete cuenta como una hora.</p></div>'+
+      action('rates','tarifas','','Cambiar comisiones')+'</div>'+
+      '<div class="scroll"><table><thead><tr><th scope="col">Modalidad</th><th scope="col">Comisión</th>'+
+      '<th scope="col">Prima por fidelidad</th></tr></thead><tbody>'+
+      packages.map((p,i) => {
+        const key = rateKeys[i];
+        const bonus = state.tarifasExtra?.[key];
+        return '<tr><td>'+p+'</td><td>'+(rates ? hourlyMoney(rates[key])+' / h' : '—')+'</td><td>'+
+          (bonus == null ? '—' : money(bonus))+'</td></tr>';
+      }).join('')+'<tr><td>GP</td><td>'+money(gpRate())+'</td><td>—</td></tr></tbody></table></div>'+
+      '<div class="sectionHead">'+bonusRequirements+'</div></section>';
   }
 }
 
@@ -376,7 +379,7 @@ function openEditor(kind, id, intent) {
     const m = member(id);
     const existing = bonusOverride(id,t,chosenMonth);
     editor.trainer = t;
-    $('editorTitle').textContent = 'Editar prima de alta';
+    $('editorTitle').textContent = 'Editar prima por fidelidad';
     fields = '<p class="wide">'+esc(m.name)+' · '+esc(monthName(chosenMonth))+' '+esc(chosenMonth.slice(0,4))+
       '<br>Importe automático: '+money(bonusAmount(m))+'</p>'+
       select('Prima','bonusStatus',[['auto','Importe automático'],['custom','Cambiar importe'],['void','Anular prima']],existing?.status || 'auto')+
@@ -396,25 +399,26 @@ function openEditor(kind, id, intent) {
       extraTable(extras,true)+
       (closure ? '' : '<p>El cierre guardará estos importes y el desglose del mes.</p>')+'</div>';
   }
-  if (kind === 'tarifasExtra') {
-    $('editorTitle').textContent = 'Importes de primas y entrenamientos sueltos';
-    fields = extraLabels.map((label,i) => input(label+' (€)',extraKeys[i],
-      state.tarifasExtra ? state.tarifasExtra[extraKeys[i]]/100 : '', 'number',
-      'required min="0" max="10000" step="0.01"')).join('');
-  }
   if (kind === 'sueltos') {
-    $('editorTitle').textContent = id ? 'Editar entrenamiento suelto' : 'Añadir entrenamiento suelto';
+    $('editorTitle').textContent = id ? 'Editar GP' : 'Añadir GP';
     fields = trainer+input('Fecha','day',data.day || defaultDay,'date')+
       input('Nombre del socio','name',data.name,'text','required maxlength="120"')+
-      '<p class="wide">'+(data.pay != null || state.tarifasExtra ? 'Importe para nómina: '+money(data.pay ?? state.tarifasExtra.single) :
-        'Configura el importe en Opciones antes de guardar.')+'</p>';
+      '<p class="wide">Importe para nómina: '+money(data.pay ?? gpRate())+'</p>';
   }
   if (kind === 'tarifas') {
     const current = ratesFor(chosenMonth);
-    fields = '<p class="wide">Comisiones por hora realizada. Se aplicarán desde el mes indicado.</p>'+
-      packages.map((p,i) => input(p+' (€/hora)',rateKeys[i],current ? current[rateKeys[i]]/100 : '',
-        'number','required min="0" step="any"')).join('')+
-      input('Desde el mes','effective',chosenMonth,'month');
+    const euroAmount = 'min="0" max="10000" step="0.01"';
+    fields = '<p class="wide">Las comisiones por hora se aplican desde el mes indicado. Los importes de fidelidad y GP se actualizan al guardar.</p>'+
+      packages.map((p,i) => {
+        const key = rateKeys[i];
+        const bonus = state.tarifasExtra?.[key];
+        return input(p+' (€/hora)',key,current ? current[key]/100 : '',
+          'number','min="0" step="any"')+
+          input('Prima por fidelidad '+p+' (€)','bonus-'+key,bonus == null ? '' : bonus/100,'number',euroAmount);
+      }).join('')+
+      input('Desde el mes','effective',chosenMonth,'month')+
+      input('GP (€)','single',gpRate()/100,'number','required '+euroAmount)+
+      '<div class="wide">'+bonusRequirements+'</div>';
   }
   if (kind === 'equipo') fields = input('Nombre','name',data.name,'text','required maxlength="100"');
   if (kind === 'socios') fields = intent === 'close' ? input('Último día','end',day(),'date') :
@@ -575,25 +579,30 @@ function change(form) {
     next.cierres = [...(next.cierres || []),{month,trainer:id,trainerName:nameOf(id),rows,extras:extrasFor(id,month)}];
     return next;
   }
-  if (kind === 'tarifasExtra') {
-    next.tarifasExtra = Object.fromEntries(extraKeys.map(key => [key,Math.round(Number(value(key))*100)]));
-    return next;
-  }
   if (kind === 'sueltos') {
     if (!trainer || !value('name') || !value('day')) throw new Error('Completa entrenador, socio y fecha.');
     if (closedMonth(trainer,value('day').slice(0,7)) || (data.id && closedMonth(data.trainer,data.day.slice(0,7)))) {
       throw new Error('El mes de este entrenador ya está cerrado.');
     }
-    const pay = data.pay ?? state.tarifasExtra?.single;
-    if (pay == null) throw new Error('Configura el importe del entrenamiento suelto en Opciones.');
+    const pay = data.pay ?? gpRate();
     Object.assign(record,{trainer,name:value('name'),day:value('day'),pay});
     next.sueltos ??= [];
   }
   if (kind === 'tarifas') {
     const effective = value('effective');
-    const rates = Object.fromEntries(rateKeys.map(key => [key,Math.round(Number(value(key))*100000)/1000]));
-    next.tarifas = (next.tarifas || []).filter(r => r.month !== effective);
-    next.tarifas.push({month:effective,rates,perHour:true});
+    if (rateKeys.some(key => value(key) !== '')) {
+      if (rateKeys.some(key => value(key) === '')) throw new Error('Introduce la comisión por hora de las cuatro modalidades.');
+      const rates = Object.fromEntries(rateKeys.map(key => [key,Math.round(Number(value(key))*100000)/1000]));
+      next.tarifas = (next.tarifas || []).filter(r => r.month !== effective);
+      next.tarifas.push({month:effective,rates,perHour:true});
+    } else if (ratesFor(effective)) {
+      throw new Error('Introduce la comisión por hora de las cuatro modalidades.');
+    }
+    const bonuses = Object.fromEntries(rateKeys.map(key => {
+      const bonus = value('bonus-'+key);
+      return [key,bonus === '' ? null : Math.round(Number(bonus)*100)];
+    }));
+    next.tarifasExtra = {...bonuses,single:Math.round(Number(value('single'))*100)};
     return next;
   }
   if (kind === 'equipo') {
@@ -695,7 +704,7 @@ function readBackup(raw) {
       !array('ajustes',a => string(a.member) && month(a.month) && optional(a.count,v => Number.isSafeInteger(v) && v >= 0),true) ||
       !array('sesiones',s => Array.isArray(s.members) && s.members.every(string)) ||
       !array('tarifas',t => month(t.month) && rates(t.rates) && optional(t.perHour,v => typeof v === 'boolean')) ||
-      !optional(data.tarifasExtra,v => rates(v) && amount(v.single)) ||
+      !optional(data.tarifasExtra,v => object(v) && rateKeys.every(key => optional(v[key],amount)) && amount(v.single)) ||
       !array('sueltos',s => string(s.id) && string(s.trainer) && iso(s.day) && string(s.name) && amount(s.pay)) ||
       !array('notasMensuales',n => string(n.member) && month(n.month) && string(n.text)) ||
       !array('ajustesPrimas',a => string(a.member) && string(a.trainer) && month(a.month) && optional(a.pay,amount)) ||
