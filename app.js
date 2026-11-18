@@ -356,8 +356,9 @@ function memberTrainingComparison(month,start,end) {
     (!memberTrainerFilter || m.trainer === memberTrainerFilter) &&
     (!memberPackageFilter || packageName(m) === memberPackageFilter))
     .sort((a,b) => compareMembers(a.m,b.m));
-  return table(title,columns,rows.map(({m,count,adjustment,fromClosure}) => {
-    const expected = defaultTrainingsForMonth(m,month);
+  return table(title,columns,rows.map(({m,count,adjustment,fromClosure,expected:savedExpected}) => {
+    const assignment = fromClosure ? state.socios.find(s => s.id === m.id) : m;
+    const expected = savedExpected ?? (assignment?.start ? defaultTrainingsForMonth({...assignment,minutes:m.minutes},month) : plannedTrainings(m));
     const registered = fromClosure || adjustment != null;
     const difference = count - expected;
     return [esc(m.name),esc(m.code || '—'),esc(nameOf(m.trainer)),mode(packageName(m)),fmt.format(expected),
@@ -1046,6 +1047,7 @@ function change(form) {
       throw new Error('Configura los importes de las primas en Opciones antes de cerrar el mes.');
     }
     const rows = closingRows(id,month).map(({m,adjustment,count,unitRate,pay}) => ({
+      expected:defaultTrainingsForMonth(m,month),
       m:{id:m.id,name:m.name,code:m.code,trainer:m.trainer,mode:m.mode,minutes:m.minutes},
       adjustment,count,unitRate,pay
     }));
