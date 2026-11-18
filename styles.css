@@ -159,3 +159,5 @@ button.year-person small{font-weight:400}
 .metric-payroll>strong{grid-column:1;grid-row:2;align-self:center;overflow-wrap:anywhere}
 .metric-payroll-detail{grid-column:2;grid-row:2;display:grid;gap:8px;font-size:12px;text-align:right}
 .metric-payroll-detail b{display:block;color:var(--ink);margin-top:2px}
+
+button[data-review-harbiz]{background:#bf3c20;border-color:#bf3c20;color:#fff}
