@@ -344,6 +344,28 @@ function closingRows(trainer, month) {
   return monthlyRows(start,end,month,m => m.trainer === trainer);
 }
 
+function memberTrainingComparison(month,start,end) {
+  const title = 'Comparativa de entrenamientos · '+monthName(month)+' '+month.slice(0,4);
+  const columns = ['Socio','N.º de socio','Entrenador','Modalidad','Previstos','Registrados','Diferencia'];
+  if (month < '2026-11') return table(title,columns,[],'El seguimiento empieza en noviembre de 2026.',true);
+  const closures = (state.cierres || []).filter(c => c.month === month);
+  const closedTrainers = new Set(closures.map(c => c.trainer));
+  const openRows = monthlyRows(start,end,month,m => !closedTrainers.has(m.trainer));
+  const closedRows = closures.flatMap(c => c.rows.map(row => ({...row, fromClosure:true})));
+  const rows = [...openRows,...closedRows].filter(({m}) =>
+    (!memberTrainerFilter || m.trainer === memberTrainerFilter) &&
+    (!memberPackageFilter || packageName(m) === memberPackageFilter))
+    .sort((a,b) => compareMembers(a.m,b.m));
+  return table(title,columns,rows.map(({m,count,adjustment,fromClosure}) => {
+    const expected = defaultTrainingsForMonth(m,month);
+    const registered = fromClosure || adjustment != null;
+    const difference = count - expected;
+    return [esc(m.name),esc(m.code || '—'),esc(nameOf(m.trainer)),mode(packageName(m)),fmt.format(expected),
+      registered ? fmt.format(count) : 'Sin registrar',
+      registered ? (difference > 0 ? '+' : '')+fmt.format(difference) : '—'];
+  }),'No hay asignaciones de entrenamiento con estos filtros en el mes seleccionado.',true);
+}
+
 function memberMovements(trainer,month) {
   const assigned = state.socios.filter(m => m.trainer === trainer);
   const identity = m => m.code ? 'code:'+m.code : 'name:'+m.name.trim().toLocaleLowerCase('es');
@@ -595,8 +617,8 @@ function render() {
   $('title').textContent = titles[page];
   $('add').textContent = '+ ' + actions[page];
   $('add').disabled = page !== 'equipo' && !state.equipo.some(t => t.active);
-  $('filters').hidden = page === 'socios';
-  $('trainerPicker').hidden = page === 'equipo';
+  $('filters').hidden = false;
+  $('trainerPicker').hidden = page === 'equipo' || page === 'socios';
   document.querySelectorAll('[data-page]').forEach(b => {
     if (b.dataset.page === page) b.setAttribute('aria-current','page');
     else b.removeAttribute('aria-current');
@@ -671,6 +693,7 @@ function render() {
     $('content').innerHTML = '<div class="filters">'+
       select('Entrenador','memberTrainerFilter',[['','Todos'],...state.equipo.filter(t => !t.absenceOnly).map(t => [t.id,t.name])],memberTrainerFilter,'id="memberTrainerFilter"')+
       select('Paquete','memberPackageFilter',[['','Todos'],...packages.map(p => [p,p])],memberPackageFilter,'id="memberPackageFilter"')+'</div>'+
+      memberTrainingComparison(month,start,end)+
       table('Asignaciones',columns,rows.filter(m => !archived(m)).map(display),'No hay asignaciones con estos filtros.')+
       table('Archivados',columns,rows.filter(archived).map(display),'Todavía no hay entrenamientos archivados.');
   }
