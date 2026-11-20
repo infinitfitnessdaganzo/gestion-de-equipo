@@ -116,6 +116,22 @@ function harbizReviewRequest(trainer,month) {
     ' en Gestión de equipo (https://infinitfitnessdaganzo.github.io/gestion-de-equipo/). Espera mi confirmación antes de modificar cualquier dato o reabrir un cierre.';
 }
 
+function monthClosureNotice(closure,month,start,end) {
+  const label = monthName(month)+' '+month.slice(0,4);
+  const closedDay = closure?.closedAt && Number.isFinite(Date.parse(closure.closedAt))
+    ? new Intl.DateTimeFormat('sv-SE',{timeZone:'Europe/Madrid'}).format(new Date(closure.closedAt))
+    : '';
+  let detail = 'Fecha de cierre no registrada. No se puede determinar el tramo de ajuste.';
+  if (closedDay) {
+    const first = closedDay < start ? start : closedDay;
+    detail = first <= end
+      ? 'Tramo ajustable: del '+date(first)+' al '+date(end)+'. Si cambia el número de entrenamientos de esos días, registra la diferencia en el informe del mes siguiente.'
+      : 'El cierre se hizo después del último día del mes.';
+  }
+  return '<div class="month-closure-notice"><strong>'+esc(label)+' · Mes cerrado'+
+    (closedDay ? ' el '+date(closedDay) : '')+'</strong><p>'+detail+'</p></div>';
+}
+
 function monthData() {
   const month = $('month').value || day().slice(0, 7);
   const start = month + '-01';
@@ -668,7 +684,7 @@ function render() {
       trainingMetrics(monthly,extras)+
       memberMovementMetric($('trainer').value,month)+
       payrollMetric(monthly,extras,(selectedClosure ? !selectedClosure.ratesMissing && monthly.every(r => r.pay != null) : ratesReady))+
-      '</div>'+closeActions+table(trainingTitle,['Entrenador',...packages,'EP','Total entrenamientos','Total para nómina','Estado'],totals,
+      '</div>'+closeActions+(lockedMonth ? monthClosureNotice(selectedClosure,month,start,end) : '')+table(trainingTitle,['Entrenador',...packages,'EP','Total entrenamientos','Total para nómina','Estado'],totals,
         'No hay entrenadores para esta selección.')+
       table('Socios entrenados en '+monthName(month),
         ['N.º socio','Socio','Paquete','Entrenamientos realizados','Mes anterior · '+monthName(previousMonth),'Comisión por hora','Comisión del mes','Nota',''],
