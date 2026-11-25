@@ -135,6 +135,7 @@ dialog.payroll-dialog{width:min(1080px,calc(100% - 24px))}
 .annual-marks{display:flex;gap:2px;justify-content:center;flex-wrap:wrap;padding:0 2px 2px}
 .annual-marks .vacation-swatch{width:8px;height:4px}
 
+.annual-day.half-mark{background:linear-gradient(90deg,var(--person-color,#2866c1) 50%,#e0e8f5 50%)}
 .annual-day.vacation-mark{background:var(--person-color);color:white}
 .annual-day:is(.absence-mark,.half-mark)>span{background:#fff;border-radius:2px;padding:0 2px}
 
