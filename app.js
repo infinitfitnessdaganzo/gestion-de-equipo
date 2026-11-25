@@ -25,7 +25,7 @@ let user;
 let editor;
 let saving = false;
 let vacationCalendarYear;
-let absenceRegisterScope = 'year';
+
 let absenceRegisterType = 'vacation';
 let memberTrainerFilter = '';
 let memberPackageFilter = '';
@@ -498,6 +498,10 @@ function personColor(person,index = 0) {
   return colors[index % colors.length];
 }
 
+function selectedVacationYear() {
+  return vacationCalendarYear ?? Number(day().slice(0,4));
+}
+
 function annualVacationCalendar(year) {
   const people = state.equipo.filter(t => t.active || state.ausencias.some(a =>
     a.trainer === t.id && (a.start.slice(0,4) <= String(year) && a.end.slice(0,4) >= String(year) ||
@@ -568,7 +572,7 @@ function annualVacationCalendar(year) {
       '<span class="cal-gap"></span>'.repeat(offset)+days+'</div></section>';
   }).join('');
   return '<section class="panel annual-calendar"><div class="sectionHead"><h2>Calendario anual del equipo</h2>'+
-    '<label>Año vacacional<input id="vacationCalendarYear" type="number" min="1900" max="9998" step="1" value="'+year+'"></label></div>'+
+    '</div>'+
     '<div class="annual-legend">'+legend+'</div>'+
     '<div class="annual-key" role="group" aria-label="Tipo de registro">'+
     '<button type="button" class="calendar-type" data-calendar-type="vacation" aria-pressed="'+!hiddenCalendarTypes.has('vacation')+'">'+
@@ -579,15 +583,12 @@ function annualVacationCalendar(year) {
     '<div class="annual-months">'+months+'</div></section>';
 }
 
-function absenceRegister(year,month) {
+function absenceRegister(year) {
   if (absenceRegisterPerson === undefined) absenceRegisterPerson = $('trainer').value;
-  const first = absenceRegisterScope === 'year' ? year+'-01-01' : month+'-01';
-  const [yy,mm] = month.split('-').map(Number);
-  const last = absenceRegisterScope === 'year' ? year+'-12-31' :
-    month+'-'+new Date(Date.UTC(yy,mm,0)).getUTCDate();
+  const first = year+'-01-01', last = year+'-12-31';
   const entries = state.ausencias.filter(a => (!absenceRegisterPerson || a.trainer === absenceRegisterPerson) &&
     (absenceRegisterType === 'all' || (absenceRegisterType === 'vacation' ? isVacation(a.type) : !isVacation(a.type))) &&
-    (absenceRegisterScope === 'year' && isVacation(a.type) ? vacationYear(a) === year : a.start <= last && a.end >= first));
+    (isVacation(a.type) ? vacationYear(a) === year : a.start <= last && a.end >= first));
   const duration = a => a.type === 'Ausencia parcial' ? a.minutes/60 : a.type === halfVacation ? 0.5 : datesIn(a.start,a.end).length;
   const sortValue = a => absenceRegisterSort.key === 'trainer' ? nameOf(a.trainer) :
     absenceRegisterSort.key === 'duration' ? duration(a) :
@@ -602,8 +603,7 @@ function absenceRegister(year,month) {
   const controls = '<div class="sectionHead">'+
     select('Persona','registerPerson',[['','Todo el equipo'],...state.equipo.map(t => [t.id,t.name])],absenceRegisterPerson,'id="registerPerson"')+
     select('Tipo','registerType',[['vacation','Vacaciones'],['absence','Ausencias'],['all','Todo']],absenceRegisterType,'id="registerType"')+
-    select('Periodo','registerScope',[['month','Mes seleccionado'],['year','Año vacacional completo']],absenceRegisterScope,'id="registerScope"')+
-    '<span>'+esc(absenceRegisterScope === 'year' ? 'Año vacacional '+year : monthName(month)+' '+month.slice(0,4))+'</span></div>';
+    '</div>';
   return '<section class="panel"><div class="sectionHead"><h2>Registro</h2></div>'+controls+
     (entries.length ? '<div class="scroll"><table><thead><tr>'+
       [['Persona','trainer'],['Tipo','type'],['Desde','start'],['Hasta','end'],['Año de vacaciones','year'],['Duración','duration'],['Nota','note']]
@@ -618,12 +618,12 @@ function absenceRegister(year,month) {
 
 function render() {
   const {start:monthStart,end:monthEnd,month:currentMonth} = monthData();
-  const visibleTrainers = state.equipo.filter(t => (page === 'ausencias' || !t.absenceOnly) && (t.active ||
+  const visibleTrainers = state.equipo.filter(t => (page === 'ausencias' || !t.absenceOnly) && (t.active || (page === 'ausencias' ? state.ausencias.some(a => a.trainer === t.id && (isVacation(a.type) ? vacationYear(a) === selectedVacationYear() : a.start <= selectedVacationYear()+'-12-31' && a.end >= selectedVacationYear()+'-01-01')) : (
     state.socios.some(m => m.trainer === t.id && m.start <= monthEnd && (!m.end || m.end >= monthStart)) ||
     state.ausencias.some(a => a.trainer === t.id && a.start <= monthEnd && a.end >= monthStart) ||
     (state.sueltos || []).some(s => s.trainer === t.id && s.day.startsWith(currentMonth)) ||
     state.correccionesNomina?.some(c => c.trainer === t.id && c.month === currentMonth) ||
-    state.cierres?.some(c => c.trainer === t.id && c.month === currentMonth)));
+    state.cierres?.some(c => c.trainer === t.id && c.month === currentMonth)))));
   const selected = $('trainer').value;
   $('trainer').value = visibleTrainers.some(t => t.id === selected) ? selected : (visibleTrainers[0]?.id || '');
   $('trainerButtons').innerHTML = visibleTrainers.map(t =>
@@ -637,6 +637,9 @@ function render() {
   $('add').textContent = '+ ' + actions[page];
   $('add').disabled = page !== 'equipo' && !state.equipo.some(t => t.active);
   $('filters').hidden = false;
+  $('monthPicker').hidden = page === 'ausencias';
+  $('vacationYearPicker').hidden = page !== 'ausencias';
+  $('vacationCalendarYear').value = selectedVacationYear();
   $('trainerPicker').hidden = page === 'equipo' || page === 'socios';
   document.querySelectorAll('[data-page]').forEach(b => {
     if (b.dataset.page === page) b.setAttribute('aria-current','page');
@@ -717,7 +720,7 @@ function render() {
       table('Archivados',columns,rows.filter(archived).map(display),'Todavía no hay entrenamientos archivados.');
   }
   if (page === 'ausencias') {
-    const daysByType = (type, entries = absences, from = start, until = end) => {
+    const daysByType = (type, entries, from, until) => {
       const days = new Map();
       for (const a of entries.filter(a => a.type === type || (type === 'Vacaciones' && a.type === halfVacation))) {
         const cursor = new Date(from && a.start < from ? from : a.start);
@@ -730,7 +733,7 @@ function render() {
       }
       return [...days.values()].reduce((sum,count) => sum+count,0);
     };
-    const year = vacationCalendarYear ?? Number(month.slice(0,4));
+    const year = selectedVacationYear();
     const firstYearDay = year+'-01-01', lastYearDay = year+'-12-31';
     const yearlyVacations = state.ausencias.filter(a => matches(a) && isVacation(a.type) && vacationYear(a) === year);
     const yearlyAbsences = state.ausencias.filter(a => matches(a) && !isVacation(a.type) &&
@@ -740,13 +743,10 @@ function render() {
     $('content').innerHTML = '<div class="metrics vacation-metrics"'+(selectedPerson ? ' style="--person-color:'+personColor(selectedPerson)+'"' : '')+'>'+
       metric('Vacaciones por solicitar · '+year,fmt.format(balance.remaining)+' días',
         fmt.format(balance.enjoyed)+' disfrutados de '+fmt.format(balance.allowance)+' · '+fmt.format(balance.scheduled)+' programados')+
-      metric('Días de vacaciones · '+year,fmt.format(daysByType('Vacaciones',yearlyVacations,null,null)),
-        monthName(month)+' '+month.slice(0,4)+': '+fmt.format(daysByType('Vacaciones'))+' días')+
-      metric('Días de ausencia completa · '+year,fmt.format(daysByType('Ausencia completa',yearlyAbsences,firstYearDay,lastYearDay)),
-        monthName(month)+' '+month.slice(0,4)+': '+fmt.format(daysByType('Ausencia completa'))+' días')+
-      metric('Horas de ausencia parcial · '+year,hours(total(yearlyAbsences.filter(a => a.type === 'Ausencia parcial'))),
-        monthName(month)+' '+month.slice(0,4)+': '+hours(total(absences.filter(a => a.type === 'Ausencia parcial'))))+'</div>'+
-      annualVacationCalendar(year)+absenceRegister(year,month);
+      metric('Días de vacaciones · '+year,fmt.format(daysByType('Vacaciones',yearlyVacations)))+
+      metric('Días de ausencia completa · '+year,fmt.format(daysByType('Ausencia completa',yearlyAbsences,firstYearDay,lastYearDay)))+
+      metric('Horas de ausencia parcial · '+year,hours(total(yearlyAbsences.filter(a => a.type === 'Ausencia parcial'))))+'</div>'+
+      annualVacationCalendar(year)+absenceRegister(year);
   }
   if (page === 'equipo') {
     const rates = ratesFor(month);
@@ -786,7 +786,8 @@ function openEditor(kind, id, intent) {
   const data = state[kind]?.find?.(r => r.id === id) || {};
   const t = $('trainer').value;
   const chosenMonth = $('month').value || day().slice(0,7);
-  const defaultDay = day().startsWith(chosenMonth) ? day() : chosenMonth+'-01';
+  const defaultPeriod = kind === 'ausencias' ? String(selectedVacationYear()) : chosenMonth;
+  const defaultDay = day().startsWith(defaultPeriod) ? day() : defaultPeriod+(kind === 'ausencias' ? '-01-01' : '-01');
   const trainers = state.equipo.filter(r => (kind === 'ausencias' || !r.absenceOnly) && (r.active || r.id === data.trainer)).map(r => [r.id,r.name]);
   const trainer = select(kind === 'ausencias' ? 'Persona' : 'Entrenador','trainer',trainers,data.trainer || t);
   editor = {kind,id,intent,data,month:chosenMonth};
@@ -1401,12 +1402,8 @@ $('content').onchange = event => {
     render();
     return;
   }
-  if (event.target.id === 'registerScope') {
-    absenceRegisterScope = event.target.value;
-    render();
-    return;
-  }
-  if (event.target.id !== 'vacationCalendarYear') return;
+};
+$('vacationCalendarYear').onchange = event => {
   const value = event.target.valueAsNumber;
   if (Number.isInteger(value) && value >= 1900 && value <= 9998) vacationCalendarYear = value;
   render();

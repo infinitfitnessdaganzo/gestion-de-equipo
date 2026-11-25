@@ -7,7 +7,7 @@
   <title>Gestión de equipo · Infinit Fitness Daganzo</title>
   <link rel="icon" href="./favicon.ico?v=20261118-equipo" sizes="16x16 32x32 48x48">
   <link rel="stylesheet" href="styles.css?v=20261125-medios-dias">
-  <script type="module" src="app.js?v=20261125-fernando-morado"></script>
+  <script type="module" src="app.js?v=20261125-ano-vacaciones"></script>
 </head>
 <body>
   <aside>
@@ -39,7 +39,7 @@
           <button class="primary" id="add"></button>
         </div></header>
       <div class="filters" id="filters">
-        <div class="month-picker">
+        <div class="month-picker" id="monthPicker">
           <div class="month-heading">
             <label for="month">Mes</label>
             <button type="button" id="currentMonth" aria-label="Hoy, volver al mes actual">Hoy</button>
@@ -50,6 +50,7 @@
             <button type="button" id="nextMonth" aria-label="Mes siguiente">›</button>
           </div>
         </div>
+        <label id="vacationYearPicker" hidden>Año vacacional<input type="number" id="vacationCalendarYear" min="1900" max="9998" step="1"></label>
         <div class="trainer-picker" id="trainerPicker">
           <span id="trainerLabel">Entrenador</span>
           <div id="trainerButtons" role="group" aria-labelledby="trainerLabel"></div>
