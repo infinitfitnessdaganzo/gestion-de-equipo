@@ -494,7 +494,7 @@ function personColor(person,index = 0) {
   const name = person.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
   if (name === 'salma' || name.startsWith('salma ')) return '#d64b91';
   if (name === 'cesar' || name.startsWith('cesar ')) return '#168054';
-  if (name === 'fernando' || name.startsWith('fernando ')) return '#2866c1';
+  if (name === 'fernando' || name.startsWith('fernando ')) return '#7136a3';
   return colors[index % colors.length];
 }
 
