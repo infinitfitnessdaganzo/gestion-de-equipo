@@ -164,3 +164,6 @@ button[data-review-harbiz]{background:#bf3c20;border-color:#bf3c20;color:#fff}
 
 .month-closure-notice{margin:12px 0 16px;padding:14px 16px;border:1px solid #e5b66b;border-left:5px solid #a74b12;border-radius:9px;background:#fff3db;color:#66340e}
 .month-closure-notice p{margin:5px 0 0}
+
+#trainerButtons button[aria-pressed="true"][style*="--person-color"]{background:var(--person-color);border-color:var(--person-color);color:contrast-color(var(--person-color))}
+.vacation-metrics[style*="--person-color"] .metric{background:color-mix(in srgb,var(--person-color) 12%,white);border-color:color-mix(in srgb,var(--person-color) 30%,white)}

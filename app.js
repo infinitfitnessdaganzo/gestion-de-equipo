@@ -489,18 +489,19 @@ function vacationBalance(person,year) {
   return {allowance,enjoyed,scheduled,remaining:Math.max(0,allowance-enjoyed-scheduled)};
 }
 
+const colors = ['#2866c1','#168054','#9b4db8','#b95b19','#a83c5c','#087d90'];
+function personColor(person,index = 0) {
+  const name = person.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+  if (name === 'salma' || name.startsWith('salma ')) return '#d64b91';
+  if (name === 'cesar' || name.startsWith('cesar ')) return '#168054';
+  if (name === 'fernando' || name.startsWith('fernando ')) return '#2866c1';
+  return colors[index % colors.length];
+}
+
 function annualVacationCalendar(year) {
   const people = state.equipo.filter(t => t.active || state.ausencias.some(a =>
     a.trainer === t.id && (a.start.slice(0,4) <= String(year) && a.end.slice(0,4) >= String(year) ||
       isVacation(a.type) && vacationYear(a) === year)));
-  const colors = ['#2866c1','#168054','#9b4db8','#b95b19','#a83c5c','#087d90'];
-  const personColor = (person,index) => {
-    const name = person.name.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-    if (name === 'salma' || name.startsWith('salma ')) return '#d64b91';
-    if (name === 'cesar' || name.startsWith('cesar ')) return '#168054';
-    if (name === 'fernando' || name.startsWith('fernando ')) return '#2866c1';
-    return colors[index % colors.length];
-  };
   const colorOf = new Map(people.map((person,index) => [person.id, personColor(person,index)]));
   const first = year+'-01-01', last = year+'-12-31';
   const events = new Map();
@@ -626,7 +627,8 @@ function render() {
   const selected = $('trainer').value;
   $('trainer').value = visibleTrainers.some(t => t.id === selected) ? selected : (visibleTrainers[0]?.id || '');
   $('trainerButtons').innerHTML = visibleTrainers.map(t =>
-    '<button type="button" data-trainer="'+esc(t.id)+'" aria-pressed="'+(t.id === $('trainer').value)+'">'+esc(t.name)+'</button>'
+    '<button type="button" data-trainer="'+esc(t.id)+'" aria-pressed="'+(t.id === $('trainer').value)+'"'+
+    (page === 'ausencias' ? ' style="--person-color:'+personColor(t)+'"' : '')+'>'+esc(t.name)+'</button>'
   ).join('');
   $('workspace').hidden = false;
   $('backupPanel').hidden = page !== 'equipo';
@@ -735,7 +737,7 @@ function render() {
       a.start <= lastYearDay && a.end >= firstYearDay);
     const selectedPerson = state.equipo.find(p => p.id === $('trainer').value);
     const balance = selectedPerson ? vacationBalance(selectedPerson,year) : {allowance:0,enjoyed:0,scheduled:0,remaining:0};
-    $('content').innerHTML = '<div class="metrics">'+
+    $('content').innerHTML = '<div class="metrics vacation-metrics"'+(selectedPerson ? ' style="--person-color:'+personColor(selectedPerson)+'"' : '')+'>'+
       metric('Vacaciones por solicitar · '+year,fmt.format(balance.remaining)+' días',
         fmt.format(balance.enjoyed)+' disfrutados de '+fmt.format(balance.allowance)+' · '+fmt.format(balance.scheduled)+' programados')+
       metric('Días de vacaciones · '+year,fmt.format(daysByType('Vacaciones',yearlyVacations,null,null)),
