@@ -505,14 +505,15 @@ function selectedVacationYear() {
 function annualVacationCalendar(year) {
   const today = day();
   const people = state.equipo.filter(t => t.active || state.ausencias.some(a =>
-    a.trainer === t.id && (a.start.slice(0,4) <= String(year) && a.end.slice(0,4) >= String(year) ||
-      isVacation(a.type) && vacationYear(a) === year)));
+    a.trainer === t.id && (isVacation(a.type) ? vacationYear(a) === year :
+      a.start.slice(0,4) <= String(year) && a.end.slice(0,4) >= String(year))));
   const colorOf = new Map(people.map((person,index) => [person.id, personColor(person,index)]));
   const first = year+'-01-01', last = year+'-12-31';
   const events = new Map();
   const yearly = new Map(people.map(person => [person.id,new Map()]));
   for (const entry of state.ausencias) {
     if (!colorOf.has(entry.trainer)) continue;
+    if (isVacation(entry.type) && vacationYear(entry) !== year) continue;
     if (entry.start <= last && entry.end >= first) {
       for (const date of datesIn(entry.start < first ? first : entry.start,entry.end > last ? last : entry.end)) {
         const marks = events.get(date) || new Map();
@@ -520,7 +521,7 @@ function annualVacationCalendar(year) {
         events.set(date,marks);
       }
     }
-    if (!isVacation(entry.type) || vacationYear(entry) !== year) continue;
+    if (!isVacation(entry.type)) continue;
     const days = yearly.get(entry.trainer);
     for (const date of datesIn(entry.start,entry.end)) {
       days.set(date,Math.min(1,(days.get(date) || 0)+(entry.type === halfVacation ? 0.5 : 1)));
