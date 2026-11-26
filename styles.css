@@ -168,3 +168,5 @@ button[data-review-harbiz]{background:#bf3c20;border-color:#bf3c20;color:#fff}
 
 #trainerButtons button[aria-pressed="true"][style*="--person-color"]{background:var(--person-color);border-color:var(--person-color);color:contrast-color(var(--person-color))}
 .vacation-metrics[style*="--person-color"] .metric{background:color-mix(in srgb,var(--person-color) 12%,white);border-color:color-mix(in srgb,var(--person-color) 30%,white)}
+
+.annual-day[aria-current="date"]{outline:2px solid #172033;outline-offset:-2px;font-weight:800}

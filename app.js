@@ -503,6 +503,7 @@ function selectedVacationYear() {
 }
 
 function annualVacationCalendar(year) {
+  const today = day();
   const people = state.equipo.filter(t => t.active || state.ausencias.some(a =>
     a.trainer === t.id && (a.start.slice(0,4) <= String(year) && a.end.slice(0,4) >= String(year) ||
       isVacation(a.type) && vacationYear(a) === year)));
@@ -562,7 +563,7 @@ function annualVacationCalendar(year) {
         (isVacation(e.type) ? ' (saldo '+vacationYear(e)+')' : '')).join(' | ');
       const single = entries.length === 1 ? entries[0] : null;
       const fill = single ? (single.type === halfVacation ? ' half-mark' : isVacation(single.type) ? ' vacation-mark' : ' absence-mark') : '';
-      return '<div class="annual-day'+fill+'"'+(single ? ' style="--person-color:'+colorOf.get(single.trainer)+'"' : '')+(message ? ' title="'+esc(message)+'" aria-label="'+esc(date+': '+message)+'"' : '')+'>'+
+      return '<div class="annual-day'+fill+'"'+(date === today ? ' aria-current="date"' : '')+(single ? ' style="--person-color:'+colorOf.get(single.trainer)+'"' : '')+(message ? ' title="'+esc(message)+'" aria-label="'+esc(date+': '+message)+'"' : '')+'>'+
         '<span>'+Number(date.slice(-2))+'</span><div class="annual-marks">'+(single ? [] : entries).map(e => {
           const style = e.type === halfVacation ? ' half-mark' : isVacation(e.type) ? '' : ' absence-mark';
           return '<span class="vacation-swatch'+style+'" style="--person-color:'+colorOf.get(e.trainer)+'"></span>';
