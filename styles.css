@@ -170,3 +170,5 @@ button[data-review-harbiz]{background:#bf3c20;border-color:#bf3c20;color:#fff}
 .vacation-metrics[style*="--person-color"] .metric{background:color-mix(in srgb,var(--person-color) 12%,white);border-color:color-mix(in srgb,var(--person-color) 30%,white)}
 
 .annual-day[aria-current="date"]{outline:2px solid #172033;outline-offset:-2px;font-weight:800}
+
+.brand-logo{display:block;width:83px;height:auto;flex:0 0 auto}
