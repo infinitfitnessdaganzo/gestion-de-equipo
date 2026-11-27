@@ -6,8 +6,8 @@
   <meta name="theme-color" content="#111820">
   <title>Gestión de equipo · Infinit Fitness Daganzo</title>
   <link rel="icon" href="./favicon.ico?v=20261118-equipo" sizes="16x16 32x32 48x48">
-  <link rel="stylesheet" href="styles.css?v=20261127-resumen-color">
-  <script type="module" src="app.js?v=20261127-resumen-color"></script>
+  <link rel="stylesheet" href="styles.css?v=20261127-copia-sincronizacion">
+  <script type="module" src="app.js?v=20261127-copia-sincronizacion"></script>
 </head>
 <body>
   <aside>
@@ -18,7 +18,20 @@
       <button data-page="ausencias">Vacaciones y ausencias</button>
       <button data-page="equipo">Opciones</button>
     </nav>
-    <button id="logout" hidden>Cerrar sesión</button>
+    <div id="sidebarData" class="sidebar-data" hidden>
+      <details class="sidebar-backup">
+        <summary>Copia de seguridad</summary>
+        <div class="backup-actions">
+          <button type="button" id="exportBackup">Exportar copia</button>
+          <button type="button" id="importBackup">Importar copia</button>
+          <input id="backupFile" type="file" accept=".json,application/json" hidden>
+        </div>
+      </details>
+      <div class="sidebar-data-footer">
+        <span id="syncStatus" role="status"></span>
+        <button type="button" id="logout">Salir</button>
+      </div>
+    </div>
   </aside>
   <main>
     <div id="notice" role="status" hidden></div>
@@ -58,16 +71,6 @@
         </div>
       </div>
       <div id="content"></div>
-      <section id="backupPanel" class="panel" hidden>
-        <div class="sectionHead">
-          <div><h2>Copias de seguridad</h2><p>Descarga una copia de los datos o restaura un archivo JSON.</p></div>
-          <div class="header-actions">
-            <button type="button" id="exportBackup">Exportar copia</button>
-            <button type="button" id="importBackup">Importar copia</button>
-            <input id="backupFile" type="file" accept=".json,application/json" hidden>
-          </div>
-        </div>
-      </section>
     </section>
   </main>
   <dialog id="editor"><form id="recordForm">

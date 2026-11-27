@@ -15,7 +15,7 @@ button:disabled{opacity:.5;cursor:default}
 button:hover:not(:disabled){filter:brightness(.94)}
 nav button,#logout{background:transparent;text-align:left;color:#d0dbe7;border-color:transparent}
 nav button[aria-current]{background:#183d63;color:#e2efff}
-#logout{margin-top:auto}
+
 main{padding:38px clamp(18px,4vw,60px);width:100%;max-width:1440px;margin:auto auto auto 0;align-self:start}
 header,.filters,.sectionHead,footer{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 h1,h2,p{margin:0}
@@ -177,3 +177,15 @@ button[data-review-harbiz]{background:#bf3c20;border-color:#bf3c20;color:#fff}
 #trainerButtons.summary-trainers button[aria-pressed="true"]{background:var(--person-color);border-color:var(--person-color);color:contrast-color(var(--person-color))}
 .summary-trainers button[aria-pressed="true"]::after{content:"";display:inline-block;width:8px;height:8px;margin-inline-start:8px;vertical-align:1px;border-radius:50%;background:#d21f35;box-shadow:0 0 0 2px white}
 .trainer-summary .metric,.trainer-summary>.panel{background:color-mix(in srgb,var(--person-color) 10%,white);border-color:color-mix(in srgb,var(--person-color) 29%,white)}
+
+.sidebar-data{margin-top:auto;display:grid;gap:10px}
+.sidebar-backup{border:1px solid #415469;border-radius:9px;background:#1d2b3a}
+.sidebar-backup summary{cursor:pointer;padding:10px 12px;font-weight:700;font-size:13px}
+.backup-actions{display:grid;gap:6px;padding:0 8px 8px}
+.backup-actions button{background:#293b50;border-color:#415469;text-align:left;font-size:13px}
+.sidebar-data-footer{display:flex;align-items:center;justify-content:space-between;gap:6px;border-top:1px solid #415469;color:#d0dbe7;font-size:12px}
+.sidebar-data-footer #logout{padding:8px 4px;font-size:12px}
+#syncStatus{display:flex;align-items:center;gap:6px}
+#syncStatus::before{content:"";width:8px;height:8px;flex:none;border-radius:50%;background:#f0bd54}
+#syncStatus[data-state="synced"]::before{background:#5acf92}
+#syncStatus:is([data-state="error"],[data-state="offline"])::before{background:#ff8290}

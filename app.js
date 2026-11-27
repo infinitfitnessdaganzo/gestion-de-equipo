@@ -634,7 +634,6 @@ function render() {
     (['resumen','ausencias'].includes(page) ? ' style="--person-color:'+personColor(t,index)+'"' : '')+'>'+esc(t.name)+'</button>'
   ).join('');
   $('workspace').hidden = false;
-  $('backupPanel').hidden = page !== 'equipo';
   updateHistoryButtons();
   $('title').textContent = titles[page];
   $('add').textContent = '+ ' + actions[page];
@@ -941,11 +940,44 @@ function updateHistoryButtons() {
   $('exportBackup').disabled = $('importBackup').disabled = saving;
 }
 
+let syncState = 'pending';
+function showSyncStatus() {
+  const status = $('syncStatus');
+  const mode = navigator.onLine ? syncState : 'offline';
+  status.dataset.state = mode;
+  status.textContent = {
+    pending:'Sin sincronizar', syncing:'Sincronizando…', synced:'Datos sincronizados',
+    offline:'Sin conexión', error:'Error de sincronización'
+  }[mode];
+}
+window.addEventListener('offline', () => {
+  syncState = 'pending';
+  showSyncStatus();
+});
+window.addEventListener('online', showSyncStatus);
+showSyncStatus();
+
+async function syncData(request, message, retryCode) {
+  syncState = 'syncing';
+  showSyncStatus();
+  try {
+    const {data,error} = await request();
+    if (error && (!retryCode || error.code !== retryCode)) throw new Error(message);
+    syncState = 'synced';
+    return data;
+  } catch (error) {
+    syncState = 'error';
+    throw error;
+  } finally {
+    showSyncStatus();
+  }
+}
+
 async function persist(next, track = true) {
   if (!db || !user) throw new Error('Hace falta iniciar sesión para guardar.');
-  const {data,error} = await db.from('ep_daganzo_estado')
-    .update({revision:revision+1,datos:next}).eq('propietario',user.id).eq('revision',revision).select('revision');
-  if (error) throw new Error('Supabase no pudo guardar el registro. Inténtalo de nuevo.');
+  const data = await syncData(() => db.from('ep_daganzo_estado')
+    .update({revision:revision+1,datos:next}).eq('propietario',user.id).eq('revision',revision).select('revision'),
+    'Supabase no pudo guardar el registro. Inténtalo de nuevo.');
   if (!data.length) {
     undoHistory.length = redoHistory.length = 0;
     updateHistoryButtons();
@@ -965,21 +997,21 @@ async function persist(next, track = true) {
 }
 
 async function load() {
-  const {data,error} = await db.from('ep_daganzo_estado').select('revision,datos').eq('propietario',user.id).maybeSingle();
-  if (error) throw new Error('No se pudo leer la base de datos de entrenadores.');
+  const data = await syncData(() => db.from('ep_daganzo_estado').select('revision,datos').eq('propietario',user.id).maybeSingle(),
+    'No se pudo leer la base de datos de entrenadores.');
   if (!data) {
     const initial = emptyState();
-    const result = await db.from('ep_daganzo_estado').insert({datos:initial}).select('revision').single();
-    if (result.error?.code === '23505') return load();
-    if (result.error) throw new Error('Esta cuenta no tiene acceso al registro de entrenadores o falta configurar Supabase.');
+    const created = await syncData(() => db.from('ep_daganzo_estado').insert({datos:initial}).select('revision').single(),
+      'Esta cuenta no tiene acceso al registro de entrenadores o falta configurar Supabase.', '23505');
+    if (!created) return load();
     state = initial;
-    revision = result.data.revision;
+    revision = created.revision;
   } else {
     state = data.datos;
     revision = data.revision;
   }
   $('login').hidden = true;
-  $('logout').hidden = false;
+  $('sidebarData').hidden = false;
   render();
 }
 
@@ -991,7 +1023,7 @@ async function start() {
   const {data} = await db.auth.getSession();
   user = data.session?.user;
   $('login').hidden = !!user;
-  $('logout').hidden = !user;
+  $('sidebarData').hidden = !user;
   if (user) await load();
 }
 
