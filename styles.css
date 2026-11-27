@@ -172,3 +172,8 @@ button[data-review-harbiz]{background:#bf3c20;border-color:#bf3c20;color:#fff}
 .annual-day[aria-current="date"]{outline:2px solid #172033;outline-offset:-2px;font-weight:800}
 
 .brand-logo{display:block;width:83px;height:auto;flex:0 0 auto}
+
+#trainerButtons.summary-trainers button{border-color:color-mix(in srgb,var(--person-color) 56%,white);background:color-mix(in srgb,var(--person-color) 13%,white)}
+#trainerButtons.summary-trainers button[aria-pressed="true"]{background:var(--person-color);border-color:var(--person-color);color:contrast-color(var(--person-color))}
+.summary-trainers button[aria-pressed="true"]::after{content:"";display:inline-block;width:8px;height:8px;margin-inline-start:8px;vertical-align:1px;border-radius:50%;background:#d21f35;box-shadow:0 0 0 2px white}
+.trainer-summary .metric,.trainer-summary>.panel{background:color-mix(in srgb,var(--person-color) 10%,white);border-color:color-mix(in srgb,var(--person-color) 29%,white)}

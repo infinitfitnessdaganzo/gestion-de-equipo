@@ -628,9 +628,10 @@ function render() {
     state.cierres?.some(c => c.trainer === t.id && c.month === currentMonth)))));
   const selected = $('trainer').value;
   $('trainer').value = visibleTrainers.some(t => t.id === selected) ? selected : (visibleTrainers[0]?.id || '');
-  $('trainerButtons').innerHTML = visibleTrainers.map(t =>
+  $('trainerButtons').classList.toggle('summary-trainers', page === 'resumen');
+  $('trainerButtons').innerHTML = visibleTrainers.map((t,index) =>
     '<button type="button" data-trainer="'+esc(t.id)+'" aria-pressed="'+(t.id === $('trainer').value)+'"'+
-    (page === 'ausencias' ? ' style="--person-color:'+personColor(t)+'"' : '')+'>'+esc(t.name)+'</button>'
+    (['resumen','ausencias'].includes(page) ? ' style="--person-color:'+personColor(t,index)+'"' : '')+'>'+esc(t.name)+'</button>'
   ).join('');
   $('workspace').hidden = false;
   $('backupPanel').hidden = page !== 'equipo';
@@ -648,8 +649,13 @@ function render() {
     else b.removeAttribute('aria-current');
   });
   const { start, end, month, absences, matches } = monthData();
+  const summaryTrainerIndex = page === 'resumen' ? visibleTrainers.findIndex(t => t.id === $('trainer').value) : -1;
+  const summaryTrainer = visibleTrainers[summaryTrainerIndex];
+  $('content').classList.toggle('trainer-summary', !!summaryTrainer);
+  if (summaryTrainer) $('content').style.setProperty('--person-color',personColor(summaryTrainer,summaryTrainerIndex));
+  else $('content').style.removeProperty('--person-color');
   if (page === 'resumen') {
-    const selectedTrainer = state.equipo.find(t => t.id === $('trainer').value);
+    const selectedTrainer = summaryTrainer;
     const trainingTitle = selectedTrainer ? 'Entrenamientos de '+esc(selectedTrainer.name) : 'Entrenamientos por entrenador';
     const closed = state.cierres?.filter(c => c.month === month && matches(c)) || [];
     const monthly = monthlyRows(start,end,month,m =>
